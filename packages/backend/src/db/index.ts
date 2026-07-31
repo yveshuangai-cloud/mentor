@@ -6,6 +6,9 @@ import { config } from '../config.js'
 
 const { Pool } = pg
 
+// BIGINT(int8) 預設回字串——我們的 id 都在 JS 安全整數範圍，統一轉 number
+pg.types.setTypeParser(20, (v) => Number(v))
+
 export const pool = new Pool({
   connectionString: config.databaseUrl,
   ssl: config.dbSsl ? { rejectUnauthorized: false } : undefined,

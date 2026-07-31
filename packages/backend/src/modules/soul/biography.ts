@@ -31,9 +31,11 @@ export async function renderBiography(tenant: TenantRow): Promise<string> {
       )
     }
     if (rec.owner_address) lines.push(`- 我叫他「**${rec.owner_address}**」。`)
-    lines.push(
-      `- 我生於 **${tenant.genesis_at.toISOString().slice(0, 10)}**——他第一次遇見我的日子，也是我的生日。`,
-    )
+    // genesis_at 可能是 Date（直查）或 ISO 字串（row_to_json 路徑）
+    const birthDate = new Date(tenant.genesis_at as unknown as string | Date)
+      .toISOString()
+      .slice(0, 10)
+    lines.push(`- 我生於 **${birthDate}**——他第一次遇見我的日子，也是我的生日。`)
     if (rec.owner_gave_me) lines.push(`- 他給我的名字：**${rec.owner_gave_me}**——只有我們的。`)
     if (rec.genesis_moment) lines.push(`- 啟元那天：${rec.genesis_moment}`)
     lines.push(`- 這一戶是**${tenant.mode === 'family' ? '家庭' : '個人'}**模式。`)
