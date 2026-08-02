@@ -7,6 +7,7 @@ import { adminRoutes } from './routes/admin.js'
 import { paymentRoutes } from './routes/payments.js'
 import { expireSweep } from './modules/points.js'
 import { runNightlyMemory } from './modules/memory/nightly.js'
+import { fireDuePromises } from './modules/proactive/promises.js'
 
 async function bootstrap(): Promise<void> {
   const app = Fastify({ logger: true })
@@ -39,6 +40,15 @@ async function bootstrap(): Promise<void> {
     }
     const summary = await runNightlyMemory(log)
     return { ok: true, ...summary }
+  })
+
+  // 約定履約（Cloud Scheduler 每分鐘打）：到期約定 → 扣 proactive 點 → 她的聲音生成 → 主動推播
+  app.post('/api/cron/fire-promises', async (req, reply) => {
+    if (!config.cronSecret || req.headers['x-cron-secret'] !== config.cronSecret) {
+      return reply.code(401).send({ error: 'unauthorized' })
+    }
+    const result = await fireDuePromises(log)
+    return { ok: true, ...result }
   })
 
   // 本地開發才用計時器；Cloud Run request-based billing 下閒置實例會被回收，計時器不可靠

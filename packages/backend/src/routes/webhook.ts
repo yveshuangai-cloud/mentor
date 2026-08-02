@@ -23,6 +23,7 @@ import {
 import { stepGenesis } from '../modules/genesis.js'
 import { processMessage } from '../modules/brain.js'
 import { extractAndLearn } from '../modules/memory/learner.js'
+import { applyActionTags, promiseSafetyNet } from '../modules/proactive/actionTags.js'
 import {
   chargeGate,
   formatPointsFooter,
@@ -190,13 +191,21 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
   }
 
   const output = await processMessage({ tenant, user, member, message: text })
-  const delivered = await deliverReply(app, replyToken, tenant.id, output.reply, charge)
+
+  // 動作標籤執行端（約定/排程；病根紀律：標籤才算真的做了）→ 剝標籤後才進遞送
+  const actions = await applyActionTags(tenant.id, user.id, output.reply, text)
+  const delivered = await deliverReply(app, replyToken, tenant.id, actions.cleanText, charge)
 
   const db = forTenant(tenant.id)
   const conv = await db.query<{ id: number }>(
     `INSERT INTO conversations (tenant_id, user_id, message_type, user_message, ai_response, points_charged)
      VALUES ($1, $2, 'text', $3, $4, $5) RETURNING id`,
-    [user.id, text, output.reply, delivered.totalCost],
+    [user.id, text, actions.cleanText, delivered.totalCost],
+  )
+
+  // 安全網：她嘴巴答應但沒吐標籤 → 從對話補抽約定（fire-and-forget）
+  void promiseSafetyNet(tenant.id, user.id, text, actions.cleanText, actions).catch((err) =>
+    app.log.warn({ err }, 'promise safety net failed'),
   )
 
   // 記憶萃取：fire-and-forget（她回完才慢慢消化，不擋回覆、失敗不影響對話）

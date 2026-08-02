@@ -4,6 +4,7 @@ import { platformQuery } from '../db/index.js'
 import { loadCharacterCore, loadFamilyBridge } from './soul/loader.js'
 import { renderBiography } from './soul/biography.js'
 import { loadMemoryBlocks } from './memory/recall.js'
+import { formatPromisesBlock } from './proactive/promises.js'
 import type { TenantRow, MemberRow, UserRow } from './tenancy.js'
 
 /**
@@ -42,10 +43,11 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
   const { tenant, user, message, attachment } = input
   const db = forTenant(tenant.id)
 
-  const [soul, biography, memory, historyRes] = await Promise.all([
+  const [soul, biography, memory, promisesBlock, historyRes] = await Promise.all([
     loadCharacterCore(),
     renderBiography(tenant),
     loadMemoryBlocks(tenant.id),
+    formatPromisesBlock(tenant.id, user.id),
     db.query<{ user_message: string | null; ai_response: string | null }>(
       `SELECT user_message, ai_response FROM conversations
        WHERE tenant_id = $1 AND user_id = $2
@@ -61,6 +63,7 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     memory.distilledEssence,
     memory.topicIndex,
     memory.learnedKnowledge,
+    promisesBlock,
     soul.postBiography,
     familyBridge,
     soul.skills,

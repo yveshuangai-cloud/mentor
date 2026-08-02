@@ -297,6 +297,75 @@ async function main(): Promise<void> {
   )
   check('當前版蒸餾唯一有效', Number(current.rows[0].n) >= 1)
 
+  console.log('\n— 主動行為 v1：約定標籤→履約→排程 —')
+  const { applyActionTags, parseScheduleTag } = await import('../src/modules/proactive/actionTags.js')
+  const { fireDuePromises, nextDailyUtc } = await import('../src/modules/proactive/promises.js')
+
+  // 假 LLM 補一個分支：履約生成短句
+  // （setLlmOverride 仍在作用中；到點生成會落到「蒸餾」分支——改成萬用檢查）
+  setLlmOverride(async (req: LlmRequest) => {
+    const sys = req.system ?? ''
+    if (sys.includes('你是慢慢本人')) {
+      return { text: '我來了～說好的事我記得。', usage: { input_tokens: 5, output_tokens: 5 } }
+    }
+    return { text: '{"remind":false}', usage: { input_tokens: 5, output_tokens: 5 } }
+  })
+
+  // 她的回覆帶 [REMIND] 標籤 → 建約定 + 標籤剝除
+  const replyWithTags =
+    '好呀，每天早上我來跟你說早安 💕 [REMIND content="跟你說早安" at="07:30" repeat="daily"]\n' +
+    '對了，會議我也幫你記好了 [SCHEDULE title="專案會議" start="2099-07-15T14:00" location="公司三樓" people="王經理"]'
+  const tagResult = await applyActionTags(tenantA.id, userA.id, replyWithTags, '每天早上 7:30 跟我說早安')
+  check('標籤建立 daily 約定', tagResult.promiseCreated)
+  check('標籤建立行事曆行程', tagResult.scheduleCreated)
+  check('顯示文字剝掉所有標籤', !tagResult.cleanText.includes('[') && tagResult.cleanText.includes('早安'))
+
+  const schedRow = await platformQuery<{ title: string; location: string }>(
+    `SELECT title, location FROM scheduled_events WHERE tenant_id = $1`,
+    [tenantA.id],
+  )
+  check('行程落 DB（標題+地點）', schedRow.rows[0]?.title === '專案會議' && schedRow.rows[0]?.location === '公司三樓')
+
+  // 到點履約：把約定時間改成現在 → fire → 扣 proactive 1 點 → daily 重排到未來
+  await platformQuery(`UPDATE promises SET fire_at = NOW() - interval '1 minute' WHERE tenant_id = $1`, [tenantA.id])
+  const balBefore = await getBalance(tenantA.id)
+  const fireResult = await fireDuePromises(() => {})
+  check('到點履約發出', fireResult.fired === 1)
+  const balAfter = await getBalance(tenantA.id)
+  check('履約扣 proactive 1 點', balBefore - balAfter === 1)
+  const afterFire = await platformQuery<{ status: string; fire_count: number; fire_at: Date }>(
+    `SELECT status, fire_count, fire_at FROM promises WHERE tenant_id = $1`,
+    [tenantA.id],
+  )
+  check(
+    'daily 約定履約後重排到未來',
+    afterFire.rows[0].status === 'active' &&
+      Number(afterFire.rows[0].fire_count) === 1 &&
+      new Date(afterFire.rows[0].fire_at).getTime() > Date.now(),
+  )
+
+  // 修改與取消（標籤路徑）
+  const updResult = await applyActionTags(tenantA.id, userA.id, '好，改成 9 點 [PROMISE_UPDATE match="早安" time="09:00"]', '早安改 9 點')
+  check('標籤修改約定時間', updResult.promiseUpdated === 1)
+  const updated = await platformQuery<{ fire_hour: number }>(
+    `SELECT fire_hour FROM promises WHERE tenant_id = $1 AND status = 'active'`,
+    [tenantA.id],
+  )
+  check('時間真的改成 9 點', Number(updated.rows[0]?.fire_hour) === 9)
+  const cancelResult = await applyActionTags(tenantA.id, userA.id, '好，不提醒了 [PROMISE_CANCEL match="早安"]', '取消早安')
+  check('標籤取消約定', cancelResult.promiseCancelled === 1)
+
+  // 馬後炮閘：once 過去時間不建
+  const pastTag = await applyActionTags(
+    tenantA.id, userA.id,
+    '我記住了 [REMIND content="提醒你開會" at="2020-01-01T08:00" repeat="once"]', '提醒開會',
+  )
+  check('once 過去時間不建（馬後炮閘）', !pastTag.promiseCreated)
+
+  // nextDailyUtc 排未來
+  check('nextDailyUtc 一定排未來', nextDailyUtc(7, 30).getTime() > Date.now())
+  check('SCHEDULE 解析容錯（缺 title 回 null）', parseScheduleTag('[SCHEDULE start="2099-01-01T10:00"]') === null)
+
   setLlmOverride(null)
 
   console.log(`\n═══ 驗收結果：${passed} 過 / ${failed} 敗 ═══`)
