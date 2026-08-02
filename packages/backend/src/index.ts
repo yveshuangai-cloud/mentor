@@ -21,10 +21,21 @@ async function bootstrap(): Promise<void> {
 
   app.get('/health', async () => ({ ok: true, service: 'manman-platform', ts: new Date().toISOString() }))
 
-  // 每小時掃一次到期點數（正式部署換 node-cron / 外部 scheduler）
-  setInterval(() => {
-    void expireSweep(log).catch((err) => app.log.error({ err }, 'expireSweep failed'))
-  }, 60 * 60 * 1000)
+  // 到期點數掃描：生產走 Cloud Scheduler 打這條（throttled Cloud Run 上 setInterval 必死）
+  app.post('/api/cron/expire-sweep', async (req, reply) => {
+    if (!config.cronSecret || req.headers['x-cron-secret'] !== config.cronSecret) {
+      return reply.code(401).send({ error: 'unauthorized' })
+    }
+    await expireSweep(log)
+    return { ok: true }
+  })
+
+  // 本地開發才用計時器；Cloud Run request-based billing 下閒置實例會被回收，計時器不可靠
+  if (config.nodeEnv === 'development') {
+    setInterval(() => {
+      void expireSweep(log).catch((err) => app.log.error({ err }, 'expireSweep failed'))
+    }, 60 * 60 * 1000)
+  }
 
   await app.listen({ port: config.port, host: '0.0.0.0' })
   log(`manman-platform backend up on :${config.port}`)

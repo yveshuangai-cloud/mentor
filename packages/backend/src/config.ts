@@ -12,8 +12,10 @@ const configSchema = z.object({
   lineChannelToken: z.string().default('not-configured'),
   lineChannelSecret: z.string().default('not-configured'),
 
-  // LLM
+  // LLM（bridgeSecret 有值 → 走 zhu-bridge 吃 Max 月費；否則直連 API 燒 key）
   anthropicApiKey: z.string().default('not-configured'),
+  llmBaseUrl: z.string().default('https://api.anthropic.com'),
+  bridgeSecret: z.string().default(''),
   brainModel: z.string().default('claude-sonnet-5'),
   extractorModel: z.string().default('claude-haiku-4-5-20251001'),
 
@@ -23,6 +25,9 @@ const configSchema = z.object({
   linepaySandbox: z.coerce.boolean().default(true),
 
   publicBaseUrl: z.string().default('http://localhost:3000'),
+
+  // Cloud Scheduler 打 cron route 用（throttled Cloud Run 上 setInterval 必死）
+  cronSecret: z.string().default(''),
 })
 
 const rawConfig = {
@@ -34,12 +39,15 @@ const rawConfig = {
   lineChannelToken: process.env.LINE_CHANNEL_TOKEN,
   lineChannelSecret: process.env.LINE_CHANNEL_SECRET,
   anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+  llmBaseUrl: process.env.LLM_BASE_URL,
+  bridgeSecret: process.env.BRIDGE_SECRET,
   brainModel: process.env.BRAIN_MODEL,
   extractorModel: process.env.EXTRACTOR_MODEL,
   linepayChannelId: process.env.LINEPAY_CHANNEL_ID,
   linepayChannelSecret: process.env.LINEPAY_CHANNEL_SECRET,
   linepaySandbox: process.env.LINEPAY_SANDBOX,
   publicBaseUrl: process.env.PUBLIC_BASE_URL,
+  cronSecret: process.env.CRON_SECRET,
 }
 
 export const config = configSchema.parse(rawConfig)
@@ -48,6 +56,7 @@ export const config = configSchema.parse(rawConfig)
 export function warnMissingConfig(log: (msg: string) => void): void {
   const notConfigured = Object.entries(config)
     .filter(([, v]) => v === 'not-configured')
+    .filter(([k]) => !(k === 'anthropicApiKey' && config.bridgeSecret !== ''))
     .map(([k]) => k)
   if (notConfigured.length > 0) {
     log(`⚠️ 未設定的 config（相關功能將停用）: ${notConfigured.join(', ')}`)

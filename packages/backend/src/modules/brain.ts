@@ -57,21 +57,27 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
   }
   messages.push({ role: 'user', content: message })
 
-  if (config.anthropicApiKey === 'not-configured') {
-    return { reply: '嗯，我聽到了。（我的腦還沒接上——請先設定 ANTHROPIC_API_KEY）' }
+  const useBridge = config.bridgeSecret !== ''
+  if (!useBridge && config.anthropicApiKey === 'not-configured') {
+    return { reply: '嗯，我聽到了。（我的腦還沒接上——請先設定 BRIDGE_SECRET 或 ANTHROPIC_API_KEY）' }
   }
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  // bridge 契約：只讀 model/system/messages，system 要純字串（cache_control 區塊給直連 API 用）
+  const res = await fetch(`${config.llmBaseUrl}/v1/messages`, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': config.anthropicApiKey,
-      'anthropic-version': '2023-06-01',
-    },
+    headers: useBridge
+      ? { 'content-type': 'application/json', authorization: `Bearer ${config.bridgeSecret}` }
+      : {
+          'content-type': 'application/json',
+          'x-api-key': config.anthropicApiKey,
+          'anthropic-version': '2023-06-01',
+        },
     body: JSON.stringify({
       model: config.brainModel,
       max_tokens: 800,
-      system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+      system: useBridge
+        ? system
+        : [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
       messages,
     }),
   })
@@ -85,5 +91,13 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     .map((c) => c.text)
     .join('')
     .trim()
-  return { reply: reply || '嗯，我在這裡。' }
+  return { reply: stripVoiceMarkers(reply) || '嗯，我在這裡。' }
+}
+
+/** 語音停頓標記（voice-dna 範例的 <#秒#>）只給語音管線用；文字通道在咽喉確定性剝除，不靠模型自律 */
+function stripVoiceMarkers(text: string): string {
+  return text
+    .replace(/<#[\d.]+#>/g, '')
+    .replace(/[^\S\n]{2,}/g, ' ')
+    .trim()
 }
