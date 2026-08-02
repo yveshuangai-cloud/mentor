@@ -15,6 +15,14 @@ export interface LineTextMessage {
   text: string
 }
 
+export interface LineAudioMessage {
+  type: 'audio'
+  originalContentUrl: string // HTTPS m4a
+  duration: number // ms
+}
+
+export type LineMessage = LineTextMessage | LineAudioMessage
+
 async function lineApi(path: string, payload: unknown): Promise<void> {
   if (config.lineChannelToken === 'not-configured') {
     console.warn(`[line] channel token 未設定，略過 ${path}`)
@@ -39,6 +47,11 @@ export async function replyText(replyToken: string, texts: string[]): Promise<vo
     replyToken,
     messages: texts.slice(0, 5).map((text): LineTextMessage => ({ type: 'text', text })),
   })
+}
+
+/** 混合訊息回覆（文字＋語音；LINE 上限 5 則） */
+export async function replyMessages(replyToken: string, messages: LineMessage[]): Promise<void> {
+  await lineApi('/v2/bot/message/reply', { replyToken, messages: messages.slice(0, 5) })
 }
 
 export async function pushText(lineUserId: string, texts: string[]): Promise<void> {

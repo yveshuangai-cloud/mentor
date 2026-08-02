@@ -1,5 +1,14 @@
 import type { FastifyInstance } from 'fastify'
-import { verifyLineSignature, replyText, pushText, getLineProfile, getMessageContent } from '../modules/line.js'
+import {
+  verifyLineSignature,
+  replyText,
+  replyMessages,
+  pushText,
+  getLineProfile,
+  getMessageContent,
+  type LineMessage,
+} from '../modules/line.js'
+import { extractVoiceTags, clipToLineAudio, voiceConfigured } from '../modules/voice.js'
 import {
   upsertUser,
   resolveMembership,
@@ -177,16 +186,69 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
   }
 
   const output = await processMessage({ tenant, user, member, message: text })
-  const footer = formatPointsFooter(charge)
-  const texts = footer ? [output.reply, footer] : [output.reply]
-  await replyText(replyToken, texts)
+  const delivered = await deliverReply(app, replyToken, tenant.id, output.reply, charge)
 
   const db = forTenant(tenant.id)
   await db.query(
     `INSERT INTO conversations (tenant_id, user_id, message_type, user_message, ai_response, points_charged)
      VALUES ($1, $2, 'text', $3, $4, $5)`,
-    [user.id, text, output.reply, charge.cost],
+    [user.id, text, output.reply, delivered.totalCost],
   )
+}
+
+/**
+ * 回覆遞送咽喉：確定性抽取 [VOICE_GEN] → 有語音就走 TTS＋voice 閘道，任何一步失敗退回純文字。
+ * 病根紀律：她「說要用聲音」不算數，這裡真的做出來才算。
+ */
+async function deliverReply(
+  app: FastifyInstance,
+  replyToken: string,
+  tenantId: number,
+  reply: string,
+  textCharge: { cost: number; balance: number; charged: boolean; gate: string },
+): Promise<{ totalCost: number }> {
+  const { cleanText, clips } = extractVoiceTags(reply)
+  const messages: LineMessage[] = []
+  let totalCost = textCharge.cost
+  let balance = textCharge.balance
+  let fellBackToText = false
+
+  if (clips.length > 0 && voiceConfigured()) {
+    // 先合成（合成失敗不扣點），全部成功才扣 voice 閘道
+    const audios: LineMessage[] = []
+    try {
+      for (const clip of clips) {
+        const { url, durationMs } = await clipToLineAudio(clip)
+        audios.push({ type: 'audio', originalContentUrl: url, duration: durationMs })
+      }
+      const voiceCharge = await chargeGate(tenantId, 'voice', { refType: 'conversation' })
+      totalCost += voiceCharge.cost
+      balance = voiceCharge.balance
+      messages.push(...audios)
+    } catch (err) {
+      if (err instanceof InsufficientPointsError) {
+        fellBackToText = true // 點數不夠出聲音 → 句子用文字說
+      } else {
+        app.log.error({ err }, 'voice clip generation failed, falling back to text')
+        fellBackToText = true
+      }
+    }
+  } else if (clips.length > 0) {
+    fellBackToText = true // 未設定 MiniMax → 文字退路
+  }
+
+  const textOut = fellBackToText
+    ? [cleanText, ...clips.map((c) => c.text)].filter(Boolean).join('\n')
+    : cleanText
+  const finalMessages: LineMessage[] = []
+  if (textOut) finalMessages.push({ type: 'text', text: textOut })
+  finalMessages.push(...messages)
+  if (totalCost > 0) {
+    finalMessages.push({ type: 'text', text: `⚡ 本次 -${totalCost} 點｜餘額 ${balance} 點` })
+  }
+  if (finalMessages.length === 0) finalMessages.push({ type: 'text', text: '嗯，我在這裡。' })
+  await replyMessages(replyToken, finalMessages)
+  return { totalCost }
 }
 
 // ── 讀圖／讀 PDF（vision 閘道；一律直連 API）─────────────────
@@ -250,13 +312,12 @@ async function handleMediaEvent(app: FastifyInstance, event: LineEvent): Promise
       base64: content.data.toString('base64'),
     },
   })
-  const footer = formatPointsFooter(charge)
-  await replyText(replyToken, footer ? [output.reply, footer] : [output.reply])
+  const delivered = await deliverReply(app, replyToken, tenant.id, output.reply, charge)
 
   const db = forTenant(tenant.id)
   await db.query(
     `INSERT INTO conversations (tenant_id, user_id, message_type, user_message, ai_response, points_charged)
      VALUES ($1, $2, $3, $4, $5, $6)`,
-    [user.id, msgType, isImage ? '[圖片]' : `[檔案] ${fileName}`, output.reply, charge.cost],
+    [user.id, msgType, isImage ? '[圖片]' : `[檔案] ${fileName}`, output.reply, delivered.totalCost],
   )
 }

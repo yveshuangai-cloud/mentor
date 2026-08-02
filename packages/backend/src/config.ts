@@ -28,6 +28,11 @@ const configSchema = z.object({
 
   // Cloud Scheduler 打 cron route 用（throttled Cloud Run 上 setInterval 必死）
   cronSecret: z.string().default(''),
+
+  // MiniMax 克隆聲（[VOICE_GEN] 技能執行端）
+  minimaxApiKey: z.string().default('not-configured'),
+  minimaxGroupId: z.string().default('not-configured'),
+  minimaxVoiceId: z.string().default('not-configured'),
 })
 
 const rawConfig = {
@@ -48,6 +53,9 @@ const rawConfig = {
   linepaySandbox: process.env.LINEPAY_SANDBOX,
   publicBaseUrl: process.env.PUBLIC_BASE_URL,
   cronSecret: process.env.CRON_SECRET,
+  minimaxApiKey: process.env.MINIMAX_API_KEY,
+  minimaxGroupId: process.env.MINIMAX_GROUP_ID,
+  minimaxVoiceId: process.env.MINIMAX_VOICE_ID,
 }
 
 export const config = configSchema.parse(rawConfig)

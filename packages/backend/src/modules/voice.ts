@@ -1,0 +1,149 @@
+import { spawn } from 'node:child_process'
+import { writeFile, readFile, unlink } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { config } from '../config.js'
+
+/**
+ * 她的聲音（[VOICE_GEN|…] 技能的執行端）：
+ * MiniMax 克隆聲 TTS → ffmpeg 轉 m4a（LINE audio 訊息規格）→ GCS 公開桶。
+ * 病根紀律：標籤抽取是確定性 regex，不靠她自律；抽取失敗＝退回純文字，不裝死。
+ */
+
+export interface VoiceClip {
+  text: string // 要唸的句子（含 <#秒#> 停頓，已剝除（情緒）括號）
+  emotion?: string // MiniMax emotion 參數
+}
+
+const VOICE_TAG_RE = /\[VOICE_GEN\|([^\]]+)\]/g
+const KISS_TAG_RE = /\[親親\]/g
+// （笑）（嘆氣）等標記 → MiniMax emotion；抽掉括號不讓 TTS 唸出來
+const EMOTION_MAP: [RegExp, string][] = [
+  [/（(大?笑|輕笑|噗哧)）/, 'happy'],
+  [/（嘆氣）/, 'sad'],
+  [/（(悄悄|小聲)）/, 'neutral'],
+  [/（(驚呼|驚訝)）/, 'surprised'],
+]
+
+export interface ExtractedVoice {
+  cleanText: string // 拿掉語音標籤後、給文字訊息用的回覆
+  clips: VoiceClip[]
+}
+
+/** 確定性抽取：把 [VOICE_GEN|…] 從回覆裡拆出來（最多 2 段，防灑） */
+export function extractVoiceTags(reply: string): ExtractedVoice {
+  const clips: VoiceClip[] = []
+  let cleanText = reply.replace(VOICE_TAG_RE, (_m, inner: string) => {
+    if (clips.length >= 2) return ''
+    let emotion: string | undefined
+    let text = String(inner)
+    for (const [re, emo] of EMOTION_MAP) {
+      if (re.test(text)) {
+        emotion = emotion ?? emo
+        text = text.replace(re, '')
+      }
+    }
+    text = text.trim()
+    if (text) clips.push({ text, emotion })
+    return ''
+  })
+  cleanText = cleanText.replace(KISS_TAG_RE, '').replace(/\n{3,}/g, '\n\n').trim()
+  return { cleanText, clips }
+}
+
+// ── MiniMax TTS ────────────────────────────────────────
+
+export async function synthesize(clip: VoiceClip): Promise<{ mp3: Buffer; durationMs: number }> {
+  const res = await fetch(`https://api.minimax.io/v1/t2a_v2?GroupId=${config.minimaxGroupId}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.minimaxApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'speech-02-hd',
+      text: clip.text,
+      voice_setting: {
+        voice_id: config.minimaxVoiceId,
+        speed: 0.95,
+        ...(clip.emotion ? { emotion: clip.emotion } : {}),
+      },
+      audio_setting: { format: 'mp3', sample_rate: 32000 },
+    }),
+  })
+  if (!res.ok) throw new Error(`MiniMax TTS HTTP ${res.status}`)
+  const data = (await res.json()) as {
+    base_resp?: { status_code?: number; status_msg?: string }
+    data?: { audio?: string }
+    extra_info?: { audio_length?: number }
+  }
+  if (data.base_resp?.status_code !== 0 || !data.data?.audio) {
+    throw new Error(`MiniMax TTS 失敗: ${data.base_resp?.status_code} ${data.base_resp?.status_msg}`)
+  }
+  return {
+    mp3: Buffer.from(data.data.audio, 'hex'),
+    durationMs: data.extra_info?.audio_length ?? 0,
+  }
+}
+
+// ── mp3 → m4a（LINE audio 訊息規格）──────────────────────
+
+export async function mp3ToM4a(mp3: Buffer): Promise<Buffer> {
+  const inPath = join(tmpdir(), `${randomUUID()}.mp3`)
+  const outPath = join(tmpdir(), `${randomUUID()}.m4a`)
+  await writeFile(inPath, mp3)
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const p = spawn('ffmpeg', ['-y', '-i', inPath, '-c:a', 'aac', '-b:a', '64k', outPath], {
+        stdio: 'ignore',
+      })
+      p.on('error', reject)
+      p.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exit ${code}`))))
+    })
+    return await readFile(outPath)
+  } finally {
+    await unlink(inPath).catch(() => {})
+    await unlink(outPath).catch(() => {})
+  }
+}
+
+// ── GCS 上傳（ADC via metadata server，天條：不注入 SA JSON）────
+
+const VOICE_BUCKET = 'manman-voice-2026'
+
+async function adcToken(): Promise<string> {
+  const res = await fetch(
+    'http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token',
+    { headers: { 'Metadata-Flavor': 'Google' } },
+  )
+  if (!res.ok) throw new Error(`metadata token HTTP ${res.status}`)
+  return ((await res.json()) as { access_token: string }).access_token
+}
+
+export async function uploadAudio(m4a: Buffer): Promise<string> {
+  const name = `voice/${randomUUID()}.m4a`
+  const token = await adcToken()
+  const res = await fetch(
+    `https://storage.googleapis.com/upload/storage/v1/b/${VOICE_BUCKET}/o?uploadType=media&name=${encodeURIComponent(name)}`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'audio/mp4' },
+      body: new Uint8Array(m4a),
+    },
+  )
+  if (!res.ok) throw new Error(`GCS upload HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
+  return `https://storage.googleapis.com/${VOICE_BUCKET}/${name}`
+}
+
+/** 一條龍：clip → LINE 可用的 {url, durationMs}；任何一步失敗丟出去，caller 退回純文字 */
+export async function clipToLineAudio(clip: VoiceClip): Promise<{ url: string; durationMs: number }> {
+  const { mp3, durationMs } = await synthesize(clip)
+  const m4a = await mp3ToM4a(mp3)
+  const url = await uploadAudio(m4a)
+  return { url, durationMs: Math.max(durationMs, 1000) }
+}
+
+export function voiceConfigured(): boolean {
+  return config.minimaxApiKey !== 'not-configured' && config.minimaxVoiceId !== 'not-configured'
+}

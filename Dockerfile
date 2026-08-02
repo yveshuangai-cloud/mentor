@@ -1,6 +1,9 @@
 # manman-platform backend（monorepo：從 repo root build）
 FROM node:22-slim
 
+# ffmpeg：MiniMax mp3 → LINE audio 訊息要的 m4a
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # 先裝依賴（利用 layer cache）
