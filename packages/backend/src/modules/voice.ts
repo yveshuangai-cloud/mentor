@@ -87,17 +87,15 @@ export async function synthesize(clip: VoiceClip): Promise<{ mp3: Buffer; durati
   }
 }
 
-// ── mp3 → m4a（LINE audio 訊息規格）──────────────────────
+// ── ffmpeg 轉檔（音訊格式互轉、圖片縮圖）─────────────────────
 
-export async function mp3ToM4a(mp3: Buffer): Promise<Buffer> {
-  const inPath = join(tmpdir(), `${randomUUID()}.mp3`)
-  const outPath = join(tmpdir(), `${randomUUID()}.m4a`)
-  await writeFile(inPath, mp3)
+export async function ffmpegConvert(input: Buffer, inExt: string, outExt: string, args: string[]): Promise<Buffer> {
+  const inPath = join(tmpdir(), `${randomUUID()}.${inExt}`)
+  const outPath = join(tmpdir(), `${randomUUID()}.${outExt}`)
+  await writeFile(inPath, input)
   try {
     await new Promise<void>((resolve, reject) => {
-      const p = spawn('ffmpeg', ['-y', '-i', inPath, '-c:a', 'aac', '-b:a', '64k', outPath], {
-        stdio: 'ignore',
-      })
+      const p = spawn('ffmpeg', ['-y', '-i', inPath, ...args, outPath], { stdio: 'ignore' })
       p.on('error', reject)
       p.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exit ${code}`))))
     })
@@ -106,6 +104,15 @@ export async function mp3ToM4a(mp3: Buffer): Promise<Buffer> {
     await unlink(inPath).catch(() => {})
     await unlink(outPath).catch(() => {})
   }
+}
+
+export async function mp3ToM4a(mp3: Buffer): Promise<Buffer> {
+  return ffmpegConvert(mp3, 'mp3', 'm4a', ['-c:a', 'aac', '-b:a', '64k'])
+}
+
+/** LINE 傳來的語音（m4a/aac）→ mp3 給 Gemini STT */
+export async function m4aToMp3(m4a: Buffer): Promise<Buffer> {
+  return ffmpegConvert(m4a, 'm4a', 'mp3', ['-c:a', 'libmp3lame', '-b:a', '64k'])
 }
 
 // ── GCS 上傳（ADC via metadata server，天條：不注入 SA JSON）────
@@ -121,19 +128,23 @@ async function adcToken(): Promise<string> {
   return ((await res.json()) as { access_token: string }).access_token
 }
 
-export async function uploadAudio(m4a: Buffer): Promise<string> {
-  const name = `voice/${randomUUID()}.m4a`
+export async function uploadMedia(buf: Buffer, contentType: string, ext: string, prefix = 'media'): Promise<string> {
+  const name = `${prefix}/${randomUUID()}.${ext}`
   const token = await adcToken()
   const res = await fetch(
     `https://storage.googleapis.com/upload/storage/v1/b/${VOICE_BUCKET}/o?uploadType=media&name=${encodeURIComponent(name)}`,
     {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'audio/mp4' },
-      body: new Uint8Array(m4a),
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': contentType },
+      body: new Uint8Array(buf),
     },
   )
   if (!res.ok) throw new Error(`GCS upload HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
   return `https://storage.googleapis.com/${VOICE_BUCKET}/${name}`
+}
+
+export async function uploadAudio(m4a: Buffer): Promise<string> {
+  return uploadMedia(m4a, 'audio/mp4', 'm4a', 'voice')
 }
 
 /** 一條龍：clip → LINE 可用的 {url, durationMs}；任何一步失敗丟出去，caller 退回純文字 */

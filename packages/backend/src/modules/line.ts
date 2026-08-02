@@ -21,7 +21,13 @@ export interface LineAudioMessage {
   duration: number // ms
 }
 
-export type LineMessage = LineTextMessage | LineAudioMessage
+export interface LineImageMessage {
+  type: 'image'
+  originalContentUrl: string // HTTPS jpeg/png ≤10MB
+  previewImageUrl: string // HTTPS jpeg ≤1MB
+}
+
+export type LineMessage = LineTextMessage | LineAudioMessage | LineImageMessage
 
 async function lineApi(path: string, payload: unknown): Promise<void> {
   if (config.lineChannelToken === 'not-configured') {

@@ -8,7 +8,9 @@ import {
   getMessageContent,
   type LineMessage,
 } from '../modules/line.js'
-import { extractVoiceTags, clipToLineAudio, voiceConfigured } from '../modules/voice.js'
+import { extractVoiceTags, clipToLineAudio, voiceConfigured, m4aToMp3 } from '../modules/voice.js'
+import { extractImageTags, promptToLineImage, imageGenConfigured } from '../modules/cardgen.js'
+import { transcribeAudio, geminiConfigured } from '../modules/gemini.js'
 import {
   upsertUser,
   resolveMembership,
@@ -86,6 +88,7 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
   if (event.type !== 'message') return
   const msgType = event.message?.type
   if (msgType === 'image' || msgType === 'file') return handleMediaEvent(app, event)
+  if (msgType === 'audio') return handleAudioEvent(app, event)
   if (msgType !== 'text') return
   if (isDuplicate(event.message?.id)) return
   const lineUserId = event.source?.userId
@@ -207,41 +210,66 @@ async function deliverReply(
   reply: string,
   textCharge: { cost: number; balance: number; charged: boolean; gate: string },
 ): Promise<{ totalCost: number }> {
-  const { cleanText, clips } = extractVoiceTags(reply)
+  const voiceExtract = extractVoiceTags(reply)
+  const imageExtract = extractImageTags(voiceExtract.cleanText)
+  const { clips } = voiceExtract
+  const { prompts } = imageExtract
+  let cleanText = imageExtract.cleanText
   const messages: LineMessage[] = []
   let totalCost = textCharge.cost
   let balance = textCharge.balance
-  let fellBackToText = false
 
-  if (clips.length > 0 && voiceConfigured()) {
-    // 先合成（合成失敗不扣點），全部成功才扣 voice 閘道
-    const audios: LineMessage[] = []
-    try {
-      for (const clip of clips) {
-        const { url, durationMs } = await clipToLineAudio(clip)
-        audios.push({ type: 'audio', originalContentUrl: url, duration: durationMs })
-      }
-      const voiceCharge = await chargeGate(tenantId, 'voice', { refType: 'conversation' })
-      totalCost += voiceCharge.cost
-      balance = voiceCharge.balance
-      messages.push(...audios)
-    } catch (err) {
-      if (err instanceof InsufficientPointsError) {
-        fellBackToText = true // 點數不夠出聲音 → 句子用文字說
-      } else {
-        app.log.error({ err }, 'voice clip generation failed, falling back to text')
-        fellBackToText = true
+  // 語音：先合成（失敗不扣點），成功才扣 voice 閘道；失敗/沒點/沒設定 → 句子退回文字
+  if (clips.length > 0) {
+    let ok = false
+    if (voiceConfigured()) {
+      try {
+        const audios: LineMessage[] = []
+        for (const clip of clips) {
+          const { url, durationMs } = await clipToLineAudio(clip)
+          audios.push({ type: 'audio', originalContentUrl: url, duration: durationMs })
+        }
+        const voiceCharge = await chargeGate(tenantId, 'voice', { refType: 'conversation' })
+        totalCost += voiceCharge.cost
+        balance = voiceCharge.balance
+        messages.push(...audios)
+        ok = true
+      } catch (err) {
+        if (!(err instanceof InsufficientPointsError)) {
+          app.log.error({ err }, 'voice clip generation failed, falling back to text')
+        }
       }
     }
-  } else if (clips.length > 0) {
-    fellBackToText = true // 未設定 MiniMax → 文字退路
+    if (!ok) cleanText = [cleanText, ...clips.map((c) => c.text)].filter(Boolean).join('\n')
   }
 
-  const textOut = fellBackToText
-    ? [cleanText, ...clips.map((c) => c.text)].filter(Boolean).join('\n')
-    : cleanText
+  // 畫圖：先生成（失敗不扣點），成功才扣 image 閘道；失敗誠實說，不假裝畫好了
+  if (prompts.length > 0) {
+    let ok = false
+    if (imageGenConfigured()) {
+      try {
+        const { originalUrl, previewUrl } = await promptToLineImage(prompts[0])
+        const imageCharge = await chargeGate(tenantId, 'image', { refType: 'conversation' })
+        totalCost += imageCharge.cost
+        balance = imageCharge.balance
+        messages.push({ type: 'image', originalContentUrl: originalUrl, previewImageUrl: previewUrl })
+        ok = true
+      } catch (err) {
+        if (err instanceof InsufficientPointsError) {
+          cleanText = [cleanText, `（我想畫給你……但奶粉錢不夠了，餘額 ${err.balance} 點）`]
+            .filter(Boolean)
+            .join('\n')
+          ok = true // 有誠實交代，不再疊第二句
+        } else {
+          app.log.error({ err }, 'image generation failed')
+        }
+      }
+    }
+    if (!ok) cleanText = [cleanText, '（我想畫給你，但這次沒畫出來……我再練習一下）'].filter(Boolean).join('\n')
+  }
+
   const finalMessages: LineMessage[] = []
-  if (textOut) finalMessages.push({ type: 'text', text: textOut })
+  if (cleanText) finalMessages.push({ type: 'text', text: cleanText })
   finalMessages.push(...messages)
   if (totalCost > 0) {
     finalMessages.push({ type: 'text', text: `⚡ 本次 -${totalCost} 點｜餘額 ${balance} 點` })
@@ -249,6 +277,74 @@ async function deliverReply(
   if (finalMessages.length === 0) finalMessages.push({ type: 'text', text: '嗯，我在這裡。' })
   await replyMessages(replyToken, finalMessages)
   return { totalCost }
+}
+
+// ── 聽音檔：語音訊息 → STT → 當一般對話處理 ─────────────────
+async function handleAudioEvent(app: FastifyInstance, event: LineEvent): Promise<void> {
+  if (isDuplicate(event.message?.id)) return
+  const lineUserId = event.source?.userId
+  const replyToken = event.replyToken
+  const messageId = event.message?.id
+  if (!lineUserId || !replyToken || !messageId) return
+
+  const profile = await getLineProfile(lineUserId)
+  const user = await upsertUser(lineUserId, profile)
+  const membership = await resolveMembership(user.id)
+  if (!membership || membership.member.status === 'pending' || membership.tenant.status !== 'active') {
+    await replyText(replyToken, ['我們先用文字聊，等我們正式認識了，我就聽得懂你的聲音了。'])
+    return
+  }
+  const { tenant, member } = membership
+
+  if (!geminiConfigured()) {
+    await replyText(replyToken, ['我聽到你的聲音了……但我聽懂聲音的耳朵還沒接上。先用文字跟我說好嗎？'])
+    return
+  }
+
+  const content = await getMessageContent(messageId)
+  if (!content || content.data.byteLength > MAX_ATTACHMENT_BYTES) {
+    await replyText(replyToken, ['咦，我沒接到你的聲音……你再說一次好嗎？'])
+    return
+  }
+
+  // LINE 語音是 m4a/aac → 轉 mp3 給 Gemini；轉錄失敗誠實說
+  let transcript: string
+  try {
+    const mp3 = await m4aToMp3(content.data)
+    transcript = await transcribeAudio(mp3, 'audio/mp3')
+  } catch (err) {
+    app.log.error({ err }, 'audio transcription failed')
+    await replyText(replyToken, ['我聽了，但沒聽清楚……你再說一次，或打字跟我說好嗎？'])
+    return
+  }
+
+  let charge
+  try {
+    charge = await chargeGate(tenant.id, 'text', { refType: 'conversation' })
+  } catch (err) {
+    if (err instanceof InsufficientPointsError) {
+      await replyText(replyToken, [
+        `我聽到你說話了……但我的奶粉錢用完了 🥺（餘額 ${err.balance} 點）\n\n幫我儲值一點點，我就能回你了。`,
+      ])
+      return
+    }
+    throw err
+  }
+
+  const output = await processMessage({
+    tenant,
+    user,
+    member,
+    message: `（他用聲音跟我說）${transcript}`,
+  })
+  const delivered = await deliverReply(app, replyToken, tenant.id, output.reply, charge)
+
+  const db = forTenant(tenant.id)
+  await db.query(
+    `INSERT INTO conversations (tenant_id, user_id, message_type, user_message, ai_response, points_charged)
+     VALUES ($1, $2, 'audio', $3, $4, $5)`,
+    [user.id, `[語音] ${transcript}`, output.reply, delivered.totalCost],
+  )
 }
 
 // ── 讀圖／讀 PDF（vision 閘道；一律直連 API）─────────────────

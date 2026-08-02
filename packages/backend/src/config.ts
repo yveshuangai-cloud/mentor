@@ -33,6 +33,9 @@ const configSchema = z.object({
   minimaxApiKey: z.string().default('not-configured'),
   minimaxGroupId: z.string().default('not-configured'),
   minimaxVoiceId: z.string().default('not-configured'),
+
+  // Gemini（聽音檔 STT＋畫圖生圖執行端）
+  geminiApiKey: z.string().default('not-configured'),
 })
 
 const rawConfig = {
@@ -56,6 +59,7 @@ const rawConfig = {
   minimaxApiKey: process.env.MINIMAX_API_KEY,
   minimaxGroupId: process.env.MINIMAX_GROUP_ID,
   minimaxVoiceId: process.env.MINIMAX_VOICE_ID,
+  geminiApiKey: process.env.GEMINI_API_KEY,
 }
 
 export const config = configSchema.parse(rawConfig)
