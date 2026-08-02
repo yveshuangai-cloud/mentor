@@ -10,6 +10,7 @@ import {
   extractReminderFromText,
   taipeiIsoToUtc,
 } from './promises.js'
+import { recordActionOutcome } from '../mirror.js'
 
 /**
  * 回覆的「動作標籤」執行端（病根紀律：標籤才算做了，嘴巴說不算）。
@@ -70,10 +71,15 @@ export async function applyActionTags(
     scheduleCreated: false,
   }
 
-  // 約定：建立
+  // 約定：建立（她放了標籤=宣稱做了；真相=DB 是否真的建立 → 誠實鏡子落帳）
   const remind = parseRemindTag(reply)
   if (remind) {
     result.promiseCreated = await createPromise(tenantId, userId, remind, userMessage.slice(0, 200))
+    void recordActionOutcome({
+      tenantId, userId, actionType: 'promise_created',
+      claimedSuccess: true, actualSuccess: result.promiseCreated,
+      evidence: remind.content.slice(0, 100),
+    })
   }
   // 約定：修改／取消
   const upd = parsePromiseUpdateTag(reply)
@@ -111,6 +117,11 @@ export async function applyActionTags(
       )
       result.scheduleCreated = true
     }
+    void recordActionOutcome({
+      tenantId, userId, actionType: 'schedule_created',
+      claimedSuccess: true, actualSuccess: result.scheduleCreated,
+      evidence: sched.title.slice(0, 100),
+    })
   }
 
   return result

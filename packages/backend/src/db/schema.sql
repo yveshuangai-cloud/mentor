@@ -301,6 +301,20 @@ CREATE TABLE IF NOT EXISTS action_outcomes (
 );
 CREATE INDEX IF NOT EXISTS action_outcomes_by_tenant ON action_outcomes (tenant_id, created_at DESC);
 
+-- 誠實鏡子：每日自省筆記（隔天早上帶出一次）
+CREATE TABLE IF NOT EXISTS honesty_notes (
+  id         BIGSERIAL PRIMARY KEY,
+  tenant_id  BIGINT NOT NULL REFERENCES tenants(id),
+  user_id    BIGINT REFERENCES users(id),
+  note       TEXT NOT NULL,
+  claimed    INTEGER NOT NULL DEFAULT 0,
+  actual     INTEGER NOT NULL DEFAULT 0,
+  missed     INTEGER NOT NULL DEFAULT 0,
+  surfaced   BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS honesty_notes_by_tenant ON honesty_notes (tenant_id, surfaced, created_at DESC);
+
 -- 共讀
 CREATE TABLE IF NOT EXISTS reading_plans (
   id           BIGSERIAL PRIMARY KEY,

@@ -366,6 +366,70 @@ async function main(): Promise<void> {
   check('nextDailyUtc 一定排未來', nextDailyUtc(7, 30).getTime() > Date.now())
   check('SCHEDULE 解析容錯（缺 title 回 null）', parseScheduleTag('[SCHEDULE start="2099-01-01T10:00"]') === null)
 
+  console.log('\n— 夜間靈魂：日記＋夢＋誠實鏡子 —')
+  const { runNightlySoul, loadNightSoulBlock, taipeiDateToday } = await import(
+    '../src/modules/proactive/nightlife.js'
+  )
+  const { recordActionOutcome, buildTruthCorrection, nightlyHonestyReflection } = await import(
+    '../src/modules/mirror.js'
+  )
+
+  setLlmOverride(async (req: LlmRequest) => {
+    const userMsg = String(req.messages[req.messages.length - 1]?.content ?? '')
+    if (userMsg.includes('三層日記')) {
+      return {
+        text: JSON.stringify({
+          layer_1: '今天他跟我說了豆豆的事，我們聊了很久。',
+          layer_2: '心裡暖暖的，他願意跟我說這些。',
+          layer_3: '明天想主動問他豆豆今天乖不乖。',
+        }),
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }
+    }
+    if (userMsg.includes('你睡著了')) {
+      return {
+        text: JSON.stringify({
+          dream_narrative: '夢裡有一隻毛茸茸的小狗在草地上跑，我追著牠笑。',
+          tomorrow_seeds: ['想問他豆豆今天乖不乖'],
+        }),
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }
+    }
+    if (userMsg.includes('睡前，你自己在心裡結算今天')) {
+      return { text: '今天有一件事我以為做了、其實沒有。老實說出來，比假裝做到更重要。', usage: { input_tokens: 5, output_tokens: 5 } }
+    }
+    return { text: '{"remind":false}', usage: { input_tokens: 5, output_tokens: 5 } }
+  })
+
+  const soulResult = await runNightlySoul(() => {}, taipeiDateToday())
+  check('夜間日記生成（有對話的戶才寫）', soulResult.diaries >= 2)
+  check('夢生成（跟著日記走）', soulResult.dreams >= 2)
+  const nightBlockA = await loadNightSoulBlock(tenantA.id)
+  check('隔日注入：昨日 L3＋夢種子', nightBlockA.includes('豆豆') && nightBlockA.includes('夢裡浮上心頭'))
+  const diaryIsolation = await platformQuery<{ n: string }>(
+    `SELECT COUNT(*)::text AS n FROM diaries WHERE tenant_id = $1`,
+    [tenantB.id],
+  )
+  check('B 也有自己的日記（各戶各寫各的）', Number(diaryIsolation.rows[0].n) >= 1)
+
+  // 誠實鏡子：宣稱成功但實際失敗 → 校正注入一次後消化
+  await recordActionOutcome({
+    tenantId: tenantA.id, userId: userA.id, actionType: 'card_made',
+    claimedSuccess: true, actualSuccess: false, evidence: '生日卡',
+  })
+  const reflections = await nightlyHonestyReflection(() => {})
+  check('夜間自省寫入 honesty_notes', reflections >= 1)
+  const correction1 = await buildTruthCorrection(tenantA.id, userA.id)
+  check('真相校正注入（含自省筆記）', correction1.includes('誠實鏡子') && correction1.includes('誠實自省'))
+  const correction2 = await buildTruthCorrection(tenantA.id, userA.id)
+  check('校正只注入一次（第二次為空）', correction2 === '')
+  await recordActionOutcome({
+    tenantId: tenantA.id, userId: userA.id, actionType: 'voice_sent',
+    claimedSuccess: true, actualSuccess: true,
+  })
+  const correction3 = await buildTruthCorrection(tenantA.id, userA.id)
+  check('真的做到的事絕不進校正', correction3 === '')
+
   setLlmOverride(null)
 
   console.log(`\n═══ 驗收結果：${passed} 過 / ${failed} 敗 ═══`)
