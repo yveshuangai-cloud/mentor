@@ -25,6 +25,10 @@ import {
   InsufficientPointsError,
   formatPointsFooter,
 } from '../src/modules/points.js'
+import { setLlmOverride, type LlmRequest } from '../src/modules/llm.js'
+import { extractAndLearn } from '../src/modules/memory/learner.js'
+import { runNightlyMemory } from '../src/modules/memory/nightly.js'
+import { loadMemoryBlocks } from '../src/modules/memory/recall.js'
 
 let passed = 0
 let failed = 0
@@ -180,6 +184,120 @@ async function main(): Promise<void> {
   check('主人確認成立', confirmed.ok)
   const bioAfterConfirm = await renderBiography(tenantA)
   check('確認後成員進傳記（關係=弟弟）', bioAfterConfirm.includes('測試阿弟') && bioAfterConfirm.includes('弟弟'))
+
+  console.log('\n— 記憶管線（假 LLM，確定性驗證流程與隔離）—')
+  // 假 LLM：依 prompt 內容回對應的假結果（萃取／歸題／提案／蒸餾）
+  setLlmOverride(async (req: LlmRequest) => {
+    const sys = req.system ?? ''
+    const userMsg = req.messages[req.messages.length - 1]?.content ?? ''
+    if (sys.includes('記憶助手')) {
+      // 萃取：從對話撈一個 fact（照對話內容編）
+      const isA = userMsg.includes('養了一隻柴犬')
+      return {
+        text: JSON.stringify({
+          facts: [
+            {
+              category: 'fact',
+              content: isA ? '對方養了一隻柴犬叫豆豆' : '對方每週二晚上上瑜伽課',
+              confidence: 0.9,
+              is_correction: false,
+              corrects: null,
+            },
+          ],
+        }),
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }
+    }
+    if (sys.includes('歸到最相關的「主題」') || sys.includes('每段對話歸到最相關')) {
+      // 歸題：抓 prompt 裡的第一個 topic id 和所有 item id，全部歸進去
+      const topicId = Number(/\[topic #(\d+)\]/.exec(userMsg)?.[1] ?? 0)
+      const ids = [...userMsg.matchAll(/\[(?:learned_fact|conv) #(\d+)\]/g)].map((m) => Number(m[1]))
+      return {
+        text: JSON.stringify(ids.map((id) => ({ source_id: id, topic: topicId }))),
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }
+    }
+    if (sys.includes('沒有適合主題可歸')) {
+      // 提案：把所有待認領 facts 湊成一個主題
+      const ids = [...userMsg.matchAll(/\[fact #(\d+)\]/g)].map((m) => Number(m[1]))
+      if (ids.length < 3) return { text: '{"proposals": []}', usage: { input_tokens: 5, output_tokens: 5 } }
+      return {
+        text: JSON.stringify({
+          proposals: [{ name: '日常生活印記', description: '對方的生活習慣', importance: 0.8, fact_ids: ids }],
+        }),
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }
+    }
+    // 蒸餾
+    const srcIds = [...`${userMsg}`.matchAll(/\[(?:fact|conv) #(\d+)/g)].map((m) => Number(m[1]))
+    const isDogTopic = userMsg.includes('柴犬')
+    return {
+      text: JSON.stringify({
+        distilled: [
+          {
+            summary: isDogTopic ? '對方最疼的是柴犬豆豆，聊到牠就開心' : '對方固定週二晚上做瑜伽，是他的充電時間',
+            source_ids: srcIds.slice(0, 3),
+            importance: 0.9,
+          },
+        ],
+        topic_impression: isDogTopic ? '豆豆是他的心頭肉' : '瑜伽是他的安定角落',
+      }),
+      usage: { input_tokens: 10, output_tokens: 10 },
+    }
+  })
+
+  // A、B 各自對話 → 萃取（需要 >=3 條 facts 才會提案主題，各餵 3 輪）
+  for (let i = 0; i < 3; i++) {
+    const savedA = await extractAndLearn({
+      tenantId: tenantA.id, conversationId: null, userId: userA.id, userName: '測試阿明',
+      userMessage: `我跟你說，我養了一隻柴犬叫豆豆（第${i}次提）`, aiResponse: '豆豆～名字好可愛，牠今天有沒有乖乖的？',
+    })
+    check(`A 第 ${i + 1} 輪萃取存入 fact`, savedA === 1)
+    await extractAndLearn({
+      tenantId: tenantB.id, conversationId: null, userId: userB.id, userName: '測試小華',
+      userMessage: `我每週二晚上要上瑜伽課（第${i}次提）`, aiResponse: '嗯，週二晚上……我記住了。',
+    })
+  }
+
+  // 夜間整理：提案主題 → 歸題 → 蒸餾 → 鞏固
+  const nightly = await runNightlyMemory(() => {})
+  check('夜間整理跑過所有活躍租戶', nightly.tenants >= 3)
+  check('冷啟動：兩戶各長出第一個主題', nightly.topics_created >= 2)
+  const linkCount = await platformQuery<{ n: string }>(
+    `SELECT COUNT(*)::text AS n FROM memory_topic_links WHERE tenant_id IN ($1, $2)`,
+    [tenantA.id, tenantB.id],
+  )
+  check('facts＋對話都歸進主題（提案+linker 合計 ≥8 條 link）', Number(linkCount.rows[0].n) >= 8)
+  check('有新料的主題完成蒸餾', nightly.topics_distilled >= 2)
+
+  // 召喚：A 的記憶區塊有豆豆、無瑜伽；B 反之（記憶零串門的靈魂版）
+  const memA = await loadMemoryBlocks(tenantA.id)
+  const memB = await loadMemoryBlocks(tenantB.id)
+  check('A 召喚得到柴犬豆豆（fact + 默契）',
+    memA.learnedKnowledge.includes('豆豆') && memA.distilledEssence.includes('豆豆'))
+  check('B 召喚得到瑜伽', memB.learnedKnowledge.includes('瑜伽') && memB.distilledEssence.includes('瑜伽'))
+  check('A 的記憶絕無 B 的（零串門）',
+    !memA.learnedKnowledge.includes('瑜伽') && !memA.distilledEssence.includes('瑜伽') && !memA.topicIndex.includes('瑜伽'))
+  check('B 的記憶絕無 A 的（零串門）',
+    !memB.learnedKnowledge.includes('豆豆') && !memB.distilledEssence.includes('豆豆'))
+
+  // 再蒸一輪：round-1 的 link 都在 24h 內 → 主題再蒸 → 舊蒸餾要被 superseded（版本鏈）
+  const distillRound2 = await runNightlyMemory(() => {})
+  check('第二輪夜間整理正常', distillRound2.tenants >= 3)
+  const superseded = await platformQuery<{ n: string }>(
+    `SELECT COUNT(*)::text AS n FROM distilled_memories
+     WHERE tenant_id = $1 AND superseded_by IS NOT NULL`,
+    [tenantA.id],
+  )
+  check('舊蒸餾標 superseded（版本鏈保留歷史）', Number(superseded.rows[0].n) >= 1)
+  const current = await platformQuery<{ n: string }>(
+    `SELECT COUNT(*)::text AS n FROM distilled_memories
+     WHERE tenant_id = $1 AND superseded_by IS NULL AND kind = 'essence'`,
+    [tenantA.id],
+  )
+  check('當前版蒸餾唯一有效', Number(current.rows[0].n) >= 1)
+
+  setLlmOverride(null)
 
   console.log(`\n═══ 驗收結果：${passed} 過 / ${failed} 敗 ═══`)
   await pool.end()

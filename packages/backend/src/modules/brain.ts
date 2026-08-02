@@ -3,6 +3,7 @@ import { forTenant } from '../db/tenantDb.js'
 import { platformQuery } from '../db/index.js'
 import { loadCharacterCore, loadFamilyBridge } from './soul/loader.js'
 import { renderBiography } from './soul/biography.js'
+import { loadMemoryBlocks } from './memory/recall.js'
 import type { TenantRow, MemberRow, UserRow } from './tenancy.js'
 
 /**
@@ -41,9 +42,10 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
   const { tenant, user, message, attachment } = input
   const db = forTenant(tenant.id)
 
-  const [soul, biography, historyRes] = await Promise.all([
+  const [soul, biography, memory, historyRes] = await Promise.all([
     loadCharacterCore(),
     renderBiography(tenant),
+    loadMemoryBlocks(tenant.id),
     db.query<{ user_message: string | null; ai_response: string | null }>(
       `SELECT user_message, ai_response FROM conversations
        WHERE tenant_id = $1 AND user_id = $2
@@ -56,6 +58,9 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
   const system = [
     soul.preBiography,
     `# 我的傳記（只屬於這一戶，絕無別人的）\n\n${biography}`,
+    memory.distilledEssence,
+    memory.topicIndex,
+    memory.learnedKnowledge,
     soul.postBiography,
     familyBridge,
     soul.skills,

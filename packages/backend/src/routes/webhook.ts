@@ -22,6 +22,7 @@ import {
 } from '../modules/tenancy.js'
 import { stepGenesis } from '../modules/genesis.js'
 import { processMessage } from '../modules/brain.js'
+import { extractAndLearn } from '../modules/memory/learner.js'
 import {
   chargeGate,
   formatPointsFooter,
@@ -192,11 +193,21 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
   const delivered = await deliverReply(app, replyToken, tenant.id, output.reply, charge)
 
   const db = forTenant(tenant.id)
-  await db.query(
+  const conv = await db.query<{ id: number }>(
     `INSERT INTO conversations (tenant_id, user_id, message_type, user_message, ai_response, points_charged)
-     VALUES ($1, $2, 'text', $3, $4, $5)`,
+     VALUES ($1, $2, 'text', $3, $4, $5) RETURNING id`,
     [user.id, text, output.reply, delivered.totalCost],
   )
+
+  // 記憶萃取：fire-and-forget（她回完才慢慢消化，不擋回覆、失敗不影響對話）
+  void extractAndLearn({
+    tenantId: tenant.id,
+    conversationId: conv.rows[0]?.id ?? null,
+    userId: user.id,
+    userName: user.display_name ?? '對方',
+    userMessage: text,
+    aiResponse: output.reply,
+  }).catch((err) => app.log.warn({ err }, 'memory learner failed'))
 }
 
 /**

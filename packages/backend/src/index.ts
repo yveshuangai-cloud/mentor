@@ -6,6 +6,7 @@ import { webhookRoutes } from './routes/webhook.js'
 import { adminRoutes } from './routes/admin.js'
 import { paymentRoutes } from './routes/payments.js'
 import { expireSweep } from './modules/points.js'
+import { runNightlyMemory } from './modules/memory/nightly.js'
 
 async function bootstrap(): Promise<void> {
   const app = Fastify({ logger: true })
@@ -28,6 +29,16 @@ async function bootstrap(): Promise<void> {
     }
     await expireSweep(log)
     return { ok: true }
+  })
+
+  // 夜間記憶整理（Cloud Scheduler 每晚打一次；台北深夜時段）：
+  // 逐租戶：facts/convs 歸主題 → 新主題提案（冷啟動降門檻）→ 蒸餾有新料的主題 → 全域鞏固
+  app.post('/api/cron/nightly-memory', async (req, reply) => {
+    if (!config.cronSecret || req.headers['x-cron-secret'] !== config.cronSecret) {
+      return reply.code(401).send({ error: 'unauthorized' })
+    }
+    const summary = await runNightlyMemory(log)
+    return { ok: true, ...summary }
   })
 
   // 本地開發才用計時器；Cloud Run request-based billing 下閒置實例會被回收，計時器不可靠
