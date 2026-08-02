@@ -92,7 +92,9 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
   }
 
   // bridge 契約：只讀 model/system/messages，system 要純字串（cache_control 區塊給直連 API 用）
-  const res = await fetch(`${config.llmBaseUrl}/v1/messages`, {
+  // llmBaseUrl 只屬於 bridge 路徑；直連（含附件強制直連）永遠打 api.anthropic.com，不吃這個 env
+  const apiBase = useBridge ? config.llmBaseUrl : 'https://api.anthropic.com'
+  const res = await fetch(`${apiBase}/v1/messages`, {
     method: 'POST',
     headers: useBridge
       ? { 'content-type': 'application/json', authorization: `Bearer ${config.bridgeSecret}` }
