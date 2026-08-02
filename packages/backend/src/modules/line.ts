@@ -48,6 +48,19 @@ export async function pushText(lineUserId: string, texts: string[]): Promise<voi
   })
 }
 
+/** 下載用戶傳來的媒體內容（圖片/檔案/語音；走 api-data host） */
+export async function getMessageContent(
+  messageId: string,
+): Promise<{ data: Buffer; contentType: string } | null> {
+  if (config.lineChannelToken === 'not-configured') return null
+  const res = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
+    headers: { Authorization: `Bearer ${config.lineChannelToken}` },
+  })
+  if (!res.ok) return null
+  const contentType = res.headers.get('content-type') ?? 'application/octet-stream'
+  return { data: Buffer.from(await res.arrayBuffer()), contentType }
+}
+
 export async function getLineProfile(
   lineUserId: string,
 ): Promise<{ displayName?: string; pictureUrl?: string }> {

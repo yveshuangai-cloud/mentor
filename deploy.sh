@@ -22,8 +22,8 @@ gcloud run deploy "$SERVICE" \
   --memory=512Mi \
   --cpu=1 \
   --add-cloudsql-instances="$SQL_CONN" \
-  --set-env-vars="NODE_ENV=production,PORT=3000,PUBLIC_BASE_URL=${RUN_URL},LLM_BASE_URL=https://bridge.soul-polaroid.work,LINEPAY_SANDBOX=true" \
-  --set-secrets="DATABASE_URL=DATABASE_URL:latest,LINE_CHANNEL_TOKEN=LINE_CHANNEL_TOKEN:latest,LINE_CHANNEL_SECRET=LINE_CHANNEL_SECRET:latest,BRIDGE_SECRET=BRIDGE_SECRET:latest,JWT_SECRET=JWT_SECRET:latest,ADMIN_TOKEN=ADMIN_TOKEN:latest,CRON_SECRET=CRON_SECRET:latest"
+  --set-env-vars="NODE_ENV=production,PUBLIC_BASE_URL=${RUN_URL},LLM_BASE_URL=https://bridge.soul-polaroid.work,LINEPAY_SANDBOX=true" \
+  --set-secrets="DATABASE_URL=DATABASE_URL:latest,LINE_CHANNEL_TOKEN=LINE_CHANNEL_TOKEN:latest,LINE_CHANNEL_SECRET=LINE_CHANNEL_SECRET:latest,BRIDGE_SECRET=BRIDGE_SECRET:latest,JWT_SECRET=JWT_SECRET:latest,ADMIN_TOKEN=ADMIN_TOKEN:latest,CRON_SECRET=CRON_SECRET:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest"
 
 echo ""
 echo "== 部署完成，鑑別信號驗證 =="
