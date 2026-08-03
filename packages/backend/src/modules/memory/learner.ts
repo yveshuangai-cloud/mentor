@@ -1,6 +1,7 @@
 import { config } from '../../config.js'
 import { forTenant } from '../../db/tenantDb.js'
 import { callLlm, extractJson, isLlmConfigured } from '../llm.js'
+import { indexMemory } from './vector.js'
 
 /**
  * 🧠 對話智慧萃取器（移植自本尊 conversationLearner，租戶化）。
@@ -117,6 +118,11 @@ export async function extractAndLearn(params: {
       ],
     )
     const factId = ins.rows[0]?.id
+
+    // 進語意層（fire-and-forget；embedding 失敗仍可關鍵字搜到）
+    if (factId) {
+      void indexMemory(tenantId, 'learned_fact', factId, `[${category}] ${fact.content}`).catch(() => {})
+    }
 
     // 糾錯：把被糾正的舊知識標 superseded（關鍵字比對，不加 AI 呼叫）
     if (fact.is_correction && fact.corrects && factId) {

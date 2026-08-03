@@ -9,6 +9,7 @@ import { expireSweep } from './modules/points.js'
 import { runNightlyMemory } from './modules/memory/nightly.js'
 import { fireDuePromises } from './modules/proactive/promises.js'
 import { runNightlySoul } from './modules/proactive/nightlife.js'
+import { runProactiveCare } from './modules/proactive/care.js'
 import { nightlyHonestyReflection } from './modules/mirror.js'
 
 async function bootstrap(): Promise<void> {
@@ -52,6 +53,15 @@ async function bootstrap(): Promise<void> {
       return reply.code(401).send({ error: 'unauthorized' })
     }
     const result = await fireDuePromises(log)
+    return { ok: true, ...result }
+  })
+
+  // 主動關懷（Cloud Scheduler 每 15 分打）：夢種子/太久沒見 → 護欄過了才輕輕出聲
+  app.post('/api/cron/proactive-care', async (req, reply) => {
+    if (!config.cronSecret || req.headers['x-cron-secret'] !== config.cronSecret) {
+      return reply.code(401).send({ error: 'unauthorized' })
+    }
+    const result = await runProactiveCare(log)
     return { ok: true, ...result }
   })
 

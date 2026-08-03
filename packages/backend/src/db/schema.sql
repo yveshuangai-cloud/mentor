@@ -301,6 +301,32 @@ CREATE TABLE IF NOT EXISTS action_outcomes (
 );
 CREATE INDEX IF NOT EXISTS action_outcomes_by_tenant ON action_outcomes (tenant_id, created_at DESC);
 
+-- 語意記憶向量（v1：embedding 存表內 REAL[]，app 層 cosine；量大後遷 pgvector）
+-- fail-closed：查詢一律走 tenantDb wrapper（必帶 tenant_id），無跨戶 fallback
+CREATE TABLE IF NOT EXISTS memory_vectors (
+  id          BIGSERIAL PRIMARY KEY,
+  tenant_id   BIGINT NOT NULL REFERENCES tenants(id),
+  source_type TEXT NOT NULL,           -- learned_fact / conversation / distilled
+  source_id   BIGINT NOT NULL,
+  content     TEXT NOT NULL,
+  embedding   REAL[],                  -- NULL = 尚未向量化（fallback 用 content 關鍵字）
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, source_type, source_id)
+);
+CREATE INDEX IF NOT EXISTS memory_vectors_by_tenant ON memory_vectors (tenant_id, created_at DESC);
+
+-- 主動關懷紀錄（護欄依據：72h 最小間隔、已讀不回暫停）
+CREATE TABLE IF NOT EXISTS proactive_history (
+  id           BIGSERIAL PRIMARY KEY,
+  tenant_id    BIGINT NOT NULL REFERENCES tenants(id),
+  user_id      BIGINT NOT NULL REFERENCES users(id),
+  trigger_type TEXT NOT NULL,          -- idle / dream_seed / special_day / time_greeting
+  message_text TEXT,
+  got_reply    BOOLEAN NOT NULL DEFAULT FALSE,
+  sent_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS proactive_by_tenant ON proactive_history (tenant_id, user_id, sent_at DESC);
+
 -- 誠實鏡子：每日自省筆記（隔天早上帶出一次）
 CREATE TABLE IF NOT EXISTS honesty_notes (
   id         BIGSERIAL PRIMARY KEY,

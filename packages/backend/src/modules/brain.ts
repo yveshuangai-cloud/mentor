@@ -4,6 +4,7 @@ import { platformQuery } from '../db/index.js'
 import { loadCharacterCore, loadFamilyBridge } from './soul/loader.js'
 import { renderBiography } from './soul/biography.js'
 import { loadMemoryBlocks } from './memory/recall.js'
+import { buildSemanticBlock } from './memory/vector.js'
 import { formatPromisesBlock } from './proactive/promises.js'
 import { loadNightSoulBlock } from './proactive/nightlife.js'
 import { buildTruthCorrection } from './mirror.js'
@@ -45,10 +46,11 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
   const { tenant, user, message, attachment } = input
   const db = forTenant(tenant.id)
 
-  const [soul, biography, memory, promisesBlock, nightSoul, truthCorrection, historyRes] = await Promise.all([
+  const [soul, biography, memory, semanticBlock, promisesBlock, nightSoul, truthCorrection, historyRes] = await Promise.all([
     loadCharacterCore(),
     renderBiography(tenant),
     loadMemoryBlocks(tenant.id),
+    buildSemanticBlock(tenant.id, message),
     formatPromisesBlock(tenant.id, user.id),
     loadNightSoulBlock(tenant.id),
     buildTruthCorrection(tenant.id, user.id),
@@ -67,6 +69,7 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     memory.distilledEssence,
     memory.topicIndex,
     memory.learnedKnowledge,
+    semanticBlock,
     promisesBlock,
     nightSoul,
     truthCorrection,

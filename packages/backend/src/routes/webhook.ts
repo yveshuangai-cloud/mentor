@@ -24,6 +24,7 @@ import { stepGenesis } from '../modules/genesis.js'
 import { processMessage } from '../modules/brain.js'
 import { extractAndLearn } from '../modules/memory/learner.js'
 import { applyActionTags, promiseSafetyNet } from '../modules/proactive/actionTags.js'
+import { markProactiveReplied } from '../modules/proactive/care.js'
 import {
   chargeGate,
   formatPointsFooter,
@@ -207,6 +208,9 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
   void promiseSafetyNet(tenant.id, user.id, text, actions.cleanText, actions).catch((err) =>
     app.log.warn({ err }, 'promise safety net failed'),
   )
+
+  // 對方回話了 → 主動關懷的「已讀不回」計數歸零（她知道他有回她）
+  void markProactiveReplied(tenant.id, user.id).catch(() => {})
 
   // 記憶萃取：fire-and-forget（她回完才慢慢消化，不擋回覆、失敗不影響對話）
   void extractAndLearn({

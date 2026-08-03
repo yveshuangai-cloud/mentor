@@ -430,6 +430,72 @@ async function main(): Promise<void> {
   const correction3 = await buildTruthCorrection(tenantA.id, userA.id)
   check('真的做到的事絕不進校正', correction3 === '')
 
+  console.log('\n— 向量記憶層（fail-closed 語意搜尋）—')
+  const { setEmbedOverride, indexMemory, semanticSearch, buildSemanticBlock } = await import(
+    '../src/modules/memory/vector.js'
+  )
+
+  // 假 embedding：狗類詞彙 → [1,0]、運動類 → [0,1]（確定性 cosine）
+  setEmbedOverride(async (texts: string[]) =>
+    texts.map((t) => (/狗|柴犬|豆豆|毛小孩/.test(t) ? [1, 0] : /瑜伽|運動|拉筋/.test(t) ? [0, 1] : [0.5, 0.5])),
+  )
+  await indexMemory(tenantA.id, 'learned_fact', 90001, '[fact] 對方養了一隻柴犬叫豆豆')
+  await indexMemory(tenantA.id, 'learned_fact', 90002, '[fact] 對方喜歡喝黑咖啡')
+  await indexMemory(tenantB.id, 'learned_fact', 90003, '[fact] 對方每週二晚上上瑜伽課')
+
+  const hitsA = await semanticSearch(tenantA.id, '我家毛小孩今天好可愛', 3)
+  check('語意檢索：毛小孩 → 找到柴犬豆豆', hitsA.length > 0 && hitsA[0].content.includes('豆豆'))
+  const hitsCross = await semanticSearch(tenantA.id, '瑜伽拉筋', 3)
+  check('fail-closed：A 搜瑜伽撈不到 B 的記憶', !hitsCross.some((h) => h.content.includes('瑜伽')))
+  const blockA = await buildSemanticBlock(tenantA.id, '毛小孩')
+  check('brain 注入區塊格式正確', blockA.includes('語意想起來的') && blockA.includes('豆豆'))
+
+  // 關鍵字 fallback（拔掉 embedding）
+  setEmbedOverride(null) // geminiApiKey 未設 → 走 fallback
+  const fallbackHits = await semanticSearch(tenantA.id, '柴犬豆豆', 3)
+  check('無 embedding 時關鍵字 fallback 仍可檢索', fallbackHits.length > 0 && fallbackHits[0].content.includes('豆豆'))
+
+  console.log('\n— 主動關懷（觸發＋護欄）—')
+  const { runProactiveCare, markProactiveReplied } = await import('../src/modules/proactive/care.js')
+  const DAY = 24 * 3600_000
+  // 固定「現在」= 台北 15:00（避開安靜時段與夢種子時段）
+  const now3pm = (() => {
+    const d = new Date()
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 7, 0, 0) // UTC 07:00 = 台北 15:00
+  })()
+
+  // 補點（前面測試把 A 扣得差不多了）
+  await grantPoints(tenantA.id, 100, { reason: 'admin_adjust', source: 'admin_adjust' })
+
+  // idle 觸發：把 A 的對話時間改成 4 天前
+  await platformQuery(`UPDATE conversations SET created_at = created_at - interval '4 days' WHERE tenant_id = $1`, [tenantA.id])
+  const care1 = await runProactiveCare(() => {}, { nowMs: now3pm })
+  check('idle 觸發：太久沒見 → 主動出聲', care1.sent >= 1)
+  const careHist = await platformQuery<{ trigger_type: string }>(
+    `SELECT trigger_type FROM proactive_history WHERE tenant_id = $1 ORDER BY sent_at DESC LIMIT 1`,
+    [tenantA.id],
+  )
+  check('proactive_history 落帳（trigger=idle）', careHist.rows[0]?.trigger_type === 'idle')
+
+  // 護欄：72h 內不再主動
+  const care2 = await runProactiveCare(() => {}, { nowMs: now3pm + 3600_000 })
+  check('護欄：72h 內同一人不再主動', care2.sent === 0)
+  // 護欄：安靜時段（台北 02:00）
+  const care3 = await runProactiveCare(() => {}, { nowMs: now3pm + 11 * 3600_000 }) // 台北 02:00
+  check('護欄：安靜時段（23-07）不出聲', care3.skipped.includes('quiet_hours'))
+  // 護欄：總開關
+  await platformQuery(`UPDATE system_settings SET value = 'false' WHERE key = 'proactive_outreach_enabled'`)
+  const care4 = await runProactiveCare(() => {}, { nowMs: now3pm })
+  check('護欄：master switch 關 → 全停', care4.skipped.includes('master_switch_off'))
+  await platformQuery(`UPDATE system_settings SET value = 'true' WHERE key = 'proactive_outreach_enabled'`)
+  // 回話 → 已讀不回歸零
+  await markProactiveReplied(tenantA.id, userA.id)
+  const replied = await platformQuery<{ got_reply: boolean }>(
+    `SELECT got_reply FROM proactive_history WHERE tenant_id = $1 ORDER BY sent_at DESC LIMIT 1`,
+    [tenantA.id],
+  )
+  check('對方回話 → 最近一筆主動標 got_reply', replied.rows[0]?.got_reply === true)
+
   setLlmOverride(null)
 
   console.log(`\n═══ 驗收結果：${passed} 過 / ${failed} 敗 ═══`)
