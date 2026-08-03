@@ -11,6 +11,7 @@ import {
   taipeiIsoToUtc,
 } from './promises.js'
 import { recordActionOutcome } from '../mirror.js'
+import { parseNoteTag, stripNoteTag, saveReadingNote } from './reading.js'
 
 /**
  * 回覆的「動作標籤」執行端（病根紀律：標籤才算做了，嘴巴說不算）。
@@ -24,6 +25,7 @@ export interface ActionTagResult {
   promiseUpdated: number
   promiseCancelled: number
   scheduleCreated: boolean
+  noteSaved: boolean
 }
 
 /** [SCHEDULE title="..." start="YYYY-MM-DDTHH:mm" end="..." location="..." people="..." repeat="daily|weekly|monthly|yearly" count="N"] */
@@ -64,11 +66,18 @@ export async function applyActionTags(
   userMessage: string,
 ): Promise<ActionTagResult> {
   const result: ActionTagResult = {
-    cleanText: stripActionTags(reply),
+    cleanText: stripActionTags(stripNoteTag(reply)),
     promiseCreated: false,
     promiseUpdated: 0,
     promiseCancelled: 0,
     scheduleCreated: false,
+    noteSaved: false,
+  }
+
+  // 共讀筆記：[NOTE]...[/NOTE] → 入庫＋進度推進（她嘴上說「記下來囉」不算，標籤才算）
+  const note = parseNoteTag(reply)
+  if (note) {
+    result.noteSaved = await saveReadingNote(tenantId, note)
   }
 
   // 約定：建立（她放了標籤=宣稱做了；真相=DB 是否真的建立 → 誠實鏡子落帳）

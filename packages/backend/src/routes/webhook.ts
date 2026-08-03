@@ -26,6 +26,14 @@ import { extractAndLearn } from '../modules/memory/learner.js'
 import { applyActionTags, promiseSafetyNet } from '../modules/proactive/actionTags.js'
 import { markProactiveReplied } from '../modules/proactive/care.js'
 import {
+  detectStartBook,
+  detectModeCommand,
+  startReadingPlan,
+  setReadingMode,
+  extractNoteFromText,
+  saveReadingNote,
+} from '../modules/proactive/reading.js'
+import {
   chargeGate,
   formatPointsFooter,
   buildMilkMoneyReport,
@@ -177,6 +185,23 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
     return
   }
 
+  // ── 共讀：導讀模式切換（確定性、免扣點）─────────────
+  const modeCmd = detectModeCommand(text)
+  if (modeCmd) {
+    const ok = await setReadingMode(tenant.id, modeCmd)
+    await replyText(replyToken, [
+      ok ? `好，那我們用 ${modeCmd} 的方式讀。下一段開始就照這樣。` : '我們好像還沒開始讀一本書呢。想讀的話跟我說「一起讀《書名》」。',
+    ])
+    return
+  }
+  // ── 共讀：開書（確定性建計畫；她的回應照常走大腦，計畫已在她心裡）──
+  const bookTitle = detectStartBook(text)
+  if (bookTitle) {
+    await startReadingPlan(tenant.id, bookTitle).catch((err) =>
+      app.log.warn({ err }, 'start reading plan failed'),
+    )
+  }
+
   // ── 一般對話：扣點 → 動腦 → 回覆＋餘額尾註 ────────
   let charge
   try {
@@ -211,6 +236,13 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
 
   // 對方回話了 → 主動關懷的「已讀不回」計數歸零（她知道他有回她）
   void markProactiveReplied(tenant.id, user.id).catch(() => {})
+
+  // 共讀筆記安全網：她沒吐 [NOTE] 但這輪明顯讀完一段 → 補抽（寧可漏記不亂記）
+  if (!actions.noteSaved) {
+    void extractNoteFromText(tenant.id, text, actions.cleanText)
+      .then((note) => (note ? saveReadingNote(tenant.id, note) : false))
+      .catch(() => {})
+  }
 
   // 記憶萃取：fire-and-forget（她回完才慢慢消化，不擋回覆、失敗不影響對話）
   void extractAndLearn({

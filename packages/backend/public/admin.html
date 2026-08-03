@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>漫漫平台 · 後台</title>
+<style>
+  :root { --bg:#faf8f5; --card:#fff; --ink:#3a3532; --soft:#8a817a; --accent:#c96f6f; --line:#eee5dc; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:"Noto Sans TC",system-ui,sans-serif; background:var(--bg); color:var(--ink); padding:24px; max-width:960px; margin:0 auto; }
+  h1 { font-size:20px; margin-bottom:4px; } h2 { font-size:15px; margin:22px 0 10px; color:var(--soft); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--soft); font-weight:500; }
+  input,button { font:inherit; padding:6px 10px; border:1px solid var(--line); border-radius:8px; }
+  input[type=number] { width:70px; }
+  button { background:var(--accent); color:#fff; border:none; cursor:pointer; }
+  button.ghost { background:none; color:var(--accent); border:1px solid var(--accent); }
+  .muted { color:var(--soft); font-size:12px; }
+  .ok { color:#4a8c5c; } .bad { color:#c0392b; }
+  #login { display:flex; gap:8px; align-items:center; }
+</style>
+</head>
+<body>
+<h1>漫漫平台 · 後台</h1>
+<p class="muted">活的扣點規則（改了即時生效）· 租戶總覽 · 帳本</p>
+
+<div class="card" id="login">
+  <input type="password" id="token" placeholder="ADMIN_TOKEN" style="flex:1">
+  <button onclick="saveToken()">登入</button>
+  <span id="loginState" class="muted"></span>
+</div>
+
+<h2>⚡ 扣點規則（point_rules）</h2>
+<div class="card"><table id="rules"><thead><tr><th>閘道</th><th>扣點</th><th>啟用</th><th>說明</th><th></th></tr></thead><tbody></tbody></table>
+<p class="muted" style="margin-top:8px">新閘道：<input id="newGate" placeholder="gate"> <input id="newCost" type="number" value="1"> <button class="ghost" onclick="addRule()">加</button></p></div>
+
+<h2>🏠 租戶</h2>
+<div class="card"><table id="tenants"><thead><tr><th>ID</th><th>主人</th><th>模式</th><th>狀態</th><th>成員</th><th>餘額</th><th>誕生日</th><th></th></tr></thead><tbody></tbody></table></div>
+
+<h2>📒 帳本 <span id="ledgerTitle" class="muted"></span></h2>
+<div class="card"><table id="ledger"><thead><tr><th>時間</th><th>增減</th><th>閘道</th><th>原因</th><th>餘額</th></tr></thead><tbody></tbody></table></div>
+
+<script>
+const $ = (s) => document.querySelector(s)
+const token = () => localStorage.getItem('mm_admin_token') || ''
+function saveToken() { localStorage.setItem('mm_admin_token', $('#token').value.trim()); refresh() }
+async function api(path, opts = {}) {
+  const res = await fetch('/api/admin' + path, {
+    ...opts,
+    headers: { 'content-type': 'application/json', 'x-admin-token': token(), ...(opts.headers || {}) },
+  })
+  if (res.status === 401) { $('#loginState').textContent = '❌ token 不對'; throw new Error('unauthorized') }
+  $('#loginState').textContent = '✅ 已登入'
+  return res.json()
+}
+async function refresh() {
+  try {
+    const { rules } = await api('/point-rules')
+    $('#rules tbody').innerHTML = rules.map(r => `<tr>
+      <td><b>${r.gate}</b></td>
+      <td><input type="number" id="cost-${r.gate}" value="${r.cost}"></td>
+      <td><input type="checkbox" id="en-${r.gate}" ${r.enabled ? 'checked' : ''}></td>
+      <td class="muted">${r.description || ''}</td>
+      <td><button class="ghost" onclick="saveRule('${r.gate}')">存</button></td></tr>`).join('')
+    const { tenants } = await api('/tenants')
+    $('#tenants tbody').innerHTML = tenants.map(t => `<tr>
+      <td>${t.id}</td><td>${t.owner_name || '—'}</td><td>${t.mode}</td>
+      <td class="${t.status === 'active' ? 'ok' : 'bad'}">${t.status}</td>
+      <td>${t.members}</td><td>${t.balance}</td>
+      <td class="muted">${t.genesis_at ? t.genesis_at.slice(0, 10) : '未誕生'}</td>
+      <td><button class="ghost" onclick="loadLedger(${t.id})">帳本</button></td></tr>`).join('')
+  } catch (e) { /* login state 已顯示 */ }
+}
+async function saveRule(gate) {
+  await api('/point-rules/' + gate, { method: 'PUT', body: JSON.stringify({
+    cost: Number($('#cost-' + gate).value), enabled: $('#en-' + gate).checked }) })
+  refresh()
+}
+async function addRule() {
+  const gate = $('#newGate').value.trim(); if (!gate) return
+  await api('/point-rules/' + gate, { method: 'PUT', body: JSON.stringify({ cost: Number($('#newCost').value) }) })
+  $('#newGate').value = ''; refresh()
+}
+async function loadLedger(tenantId) {
+  $('#ledgerTitle').textContent = '— 租戶 ' + tenantId
+  const { ledger } = await api('/tenants/' + tenantId + '/ledger')
+  $('#ledger tbody').innerHTML = ledger.map(l => `<tr>
+    <td class="muted">${l.created_at.slice(0, 16).replace('T', ' ')}</td>
+    <td class="${l.delta > 0 ? 'ok' : 'bad'}">${l.delta > 0 ? '+' : ''}${l.delta}</td>
+    <td>${l.gate || '—'}</td><td>${l.reason}</td><td>${l.balance_after}</td></tr>`).join('')
+}
+$('#token').value = token()
+if (token()) refresh()
+</script>
+</body>
+</html>

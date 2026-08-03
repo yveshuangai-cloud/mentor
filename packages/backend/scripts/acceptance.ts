@@ -496,6 +496,58 @@ async function main(): Promise<void> {
   )
   check('對方回話 → 最近一筆主動標 got_reply', replied.rows[0]?.got_reply === true)
 
+  console.log('\n— 共讀 session 落地 —')
+  const reading = await import('../src/modules/proactive/reading.js')
+
+  setLlmOverride(async (req: LlmRequest) => {
+    const userMsg = String(req.messages[req.messages.length - 1]?.content ?? '')
+    if (userMsg.includes('共讀規劃員')) {
+      return {
+        text: JSON.stringify({
+          segments: [
+            { seg: 1, title: '什麼是瑜伽', refs: '1.1–1.4' },
+            { seg: 2, title: '心的波動', refs: '1.5–1.11' },
+            { seg: 3, title: '練習與放下', refs: '1.12–1.16' },
+          ],
+        }),
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }
+    }
+    return { text: '{"note":false}', usage: { input_tokens: 5, output_tokens: 5 } }
+  })
+
+  check('偵測開書句', reading.detectStartBook('我們一起讀《瑜伽經》好不好') === '瑜伽經')
+  check('偵測模式指令', reading.detectModeCommand('導讀模式 A') === 'A')
+  const planStarted = await reading.startReadingPlan(tenantA.id, '瑜伽經')
+  check('開書：建計畫＋LLM 分段地圖', planStarted)
+  const planDup = await reading.startReadingPlan(tenantA.id, '瑜伽經')
+  check('同書不重複開', !planDup)
+  check('切模式 A', await reading.setReadingMode(tenantA.id, 'A'))
+
+  // [NOTE] 標籤 → 筆記入庫＋進度推進（走 actionTags 全路徑）
+  const noteReply =
+    '那我把這段記下來囉。\n[NOTE seg="1" chapter="三摩地品" title="什麼是瑜伽" refs="1.1–1.4" partner="他說靜下來很難"]' +
+    '今天我們讀了第一段。他說靜下來很難，我們的體會是：看見心在動，就已經是靜的開始。[/NOTE]'
+  const noteResult = await applyActionTags(tenantA.id, userA.id, noteReply, '我覺得靜下來好難')
+  check('NOTE 標籤 → 筆記入庫', noteResult.noteSaved)
+  check('NOTE 區塊從顯示文字剝除', !noteResult.cleanText.includes('[NOTE') && noteResult.cleanText.includes('記下來囉'))
+  const planRow = await platformQuery<{ cur_segment: number; mode: string }>(
+    `SELECT cur_segment, mode FROM reading_plans WHERE tenant_id = $1 AND status = 'active'`,
+    [tenantA.id],
+  )
+  check('筆記後進度推進到第 2 段', Number(planRow.rows[0]?.cur_segment) === 2 && planRow.rows[0]?.mode === 'A')
+
+  const readingBlock = await reading.buildReadingBlock(tenantA.id)
+  check(
+    '注入區塊：模式＋進度＋筆記＋防否認',
+    readingBlock.includes('【導讀模式：A】') &&
+      readingBlock.includes('第 2 段') &&
+      readingBlock.includes('心的波動') &&
+      readingBlock.includes('別否認'),
+  )
+  const readingBlockB = await reading.buildReadingBlock(tenantB.id)
+  check('B 戶沒開書 → 無共讀區塊（隔離）', readingBlockB === '')
+
   setLlmOverride(null)
 
   console.log(`\n═══ 驗收結果：${passed} 過 / ${failed} 敗 ═══`)

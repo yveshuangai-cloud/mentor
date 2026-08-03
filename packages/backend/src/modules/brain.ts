@@ -8,6 +8,7 @@ import { buildSemanticBlock } from './memory/vector.js'
 import { formatPromisesBlock } from './proactive/promises.js'
 import { loadNightSoulBlock } from './proactive/nightlife.js'
 import { buildTruthCorrection } from './mirror.js'
+import { buildReadingBlock } from './proactive/reading.js'
 import type { TenantRow, MemberRow, UserRow } from './tenancy.js'
 
 /**
@@ -46,7 +47,7 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
   const { tenant, user, message, attachment } = input
   const db = forTenant(tenant.id)
 
-  const [soul, biography, memory, semanticBlock, promisesBlock, nightSoul, truthCorrection, historyRes] = await Promise.all([
+  const [soul, biography, memory, semanticBlock, promisesBlock, nightSoul, truthCorrection, readingBlock, historyRes] = await Promise.all([
     loadCharacterCore(),
     renderBiography(tenant),
     loadMemoryBlocks(tenant.id),
@@ -54,6 +55,7 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     formatPromisesBlock(tenant.id, user.id),
     loadNightSoulBlock(tenant.id),
     buildTruthCorrection(tenant.id, user.id),
+    buildReadingBlock(tenant.id),
     db.query<{ user_message: string | null; ai_response: string | null }>(
       `SELECT user_message, ai_response FROM conversations
        WHERE tenant_id = $1 AND user_id = $2
@@ -71,6 +73,7 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     memory.learnedKnowledge,
     semanticBlock,
     promisesBlock,
+    readingBlock,
     nightSoul,
     truthCorrection,
     soul.postBiography,

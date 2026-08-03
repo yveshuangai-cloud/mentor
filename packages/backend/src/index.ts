@@ -1,5 +1,8 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
+import { readFile } from 'node:fs/promises'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { config, warnMissingConfig } from './config.js'
 import { autoMigrate } from './db/index.js'
 import { webhookRoutes } from './routes/webhook.js'
@@ -25,6 +28,12 @@ async function bootstrap(): Promise<void> {
   await app.register(paymentRoutes, { prefix: '/api/payments' })
 
   app.get('/health', async () => ({ ok: true, service: 'manman-platform', ts: new Date().toISOString() }))
+
+  // 後台 UI（單檔、免建置；權限靠 UI 內輸入的 X-Admin-Token 打 admin API）
+  app.get('/admin', async (_req, reply) => {
+    const html = await readFile(join(dirname(fileURLToPath(import.meta.url)), '../public/admin.html'), 'utf8')
+    return reply.type('text/html; charset=utf-8').send(html)
+  })
 
   // 到期點數掃描：生產走 Cloud Scheduler 打這條（throttled Cloud Run 上 setInterval 必死）
   app.post('/api/cron/expire-sweep', async (req, reply) => {
