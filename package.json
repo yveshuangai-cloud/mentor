@@ -5,7 +5,8 @@
   "description": "饅頭語氣靈 AI 平台（多租戶 SaaS on LINE）",
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "packages/voice-call/frontend"
   ],
   "engines": {
     "node": ">=20"
