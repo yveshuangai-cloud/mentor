@@ -13,6 +13,17 @@ export interface WebSearchResult {
   queries: string[]
 }
 
+const SEARCH_REQUEST_RE = /\[WEB_SEARCH\|([^\]\r\n]{2,500})\]/i
+
+/** 模型主動承認知識邊界時，可用這個內部標籤要求後端真正搜尋。 */
+export function extractWebSearchRequest(reply: string): { query: string; cleanText: string } {
+  const match = reply.match(SEARCH_REQUEST_RE)
+  return {
+    query: match?.[1]?.trim() ?? '',
+    cleanText: reply.replace(/\[WEB_SEARCH\|[^\]\r\n]*\]/gi, '').trim(),
+  }
+}
+
 /** 明確要求搜尋或明顯依賴即時資料時才聯網，避免每輪閒聊都產生搜尋費用。 */
 export function shouldUseWebSearch(message: string): boolean {
   const text = message.trim()
@@ -21,6 +32,8 @@ export function shouldUseWebSearch(message: string): boolean {
   if (/(?:上網|網路|網際網路).{0,8}(?:搜尋|查|找|研究)/i.test(text)) return true
   if (/(?:搜集|蒐集|收集|研究|學習).{0,24}(?:知識|資料|資訊|心理學|管理|法規|技術)/i.test(text)) return true
   if (/(?:最新|近期|今天|昨日|昨天|目前|現在).{0,18}(?:新聞|消息|價格|行情|法規|政策|版本|研究|資料|狀況|趨勢|是誰|如何)/i.test(text)) return true
+  if (/(?:查證|核實|真假|是否屬實|有沒有根據|資料來源|情報)/i.test(text)) return true
+  if (/(?:現任|目前的).{0,16}(?:總統|首相|市長|部長|執行長|CEO|負責人|董事長)/i.test(text)) return true
   return /(?:新聞|天氣|股價|匯率|賽程|選舉結果).{0,10}(?:最新|今天|現在|目前)/i.test(text)
 }
 

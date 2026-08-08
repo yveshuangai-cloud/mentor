@@ -14,6 +14,7 @@ import { CONVERSATION_STYLE_PROMPT } from './conversationStyle.js'
 import { AUTHORIZED_UPGRADE_PROMPT } from './upgrades.js'
 import { DOCUMENT_SAFETY_PROMPT, loadRecentDocumentContext } from './documents.js'
 import {
+  extractWebSearchRequest,
   formatSearchContext,
   searchWeb,
   shouldUseWebSearch,
@@ -216,6 +217,34 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     outputTokens += data.usage?.output_tokens ?? 0
   }
 
+  // 模型在回答途中辨認到自己的知識邊界時，可主動要求搜尋，再用真實結果重答一次。
+  // 這讓搜尋不只依賴使用者說出「幫我查」，也不必為每輪閒聊付搜尋成本。
+  if (!webSearchUsed && reply) {
+    const searchRequest = extractWebSearchRequest(reply)
+    if (searchRequest.query) {
+      try {
+        const searchResult = await searchWeb(searchRequest.query)
+        const autonomousSearchBlock = formatSearchContext(searchRequest.query, searchResult)
+        webSearchSources = searchResult.sources
+        webSearchUsed = true
+        const searched = await request(
+          messages,
+          1200,
+          `\n\n===\n\n${autonomousSearchBlock}\n\n現在請根據搜尋結果重新完整回答。不要輸出 WEB_SEARCH 標籤，也不要假裝搜尋結果比來源更確定。`,
+        )
+        const searchedReply = textOf(searched)
+        if (!searchedReply) throw new Error('autonomous web search produced no final answer')
+        reply = searchedReply
+        data = searched
+        inputTokens += searched.usage?.input_tokens ?? 0
+        outputTokens += searched.usage?.output_tokens ?? 0
+      } catch (error) {
+        console.error('[autonomous-web-search] failed:', (error as Error).message)
+        reply = searchRequest.cleanText || '這件事超出我目前能可靠確認的範圍。我剛才嘗試上網查證，但這次搜尋沒有成功；我不想用猜的回答你。'
+      }
+    }
+  }
+
   // 模型碰到 token 上限時，讓它從斷點續寫；不再把半句話直接交給 LINE。
   if (reply && data.stop_reason === 'max_tokens') {
     const continuation = await request(
@@ -237,7 +266,7 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     output_tokens: outputTokens,
   }).catch(() => {})
 
-  let visibleReply = stripVoiceMarkers(reply)
+  let visibleReply = extractWebSearchRequest(stripVoiceMarkers(reply)).cleanText
   if (webSearchUsed && webSearchSources.length) {
     const sources = webSearchSources
       .filter((source) => !visibleReply.includes(source.url))
