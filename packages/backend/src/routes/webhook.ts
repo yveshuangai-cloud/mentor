@@ -23,6 +23,7 @@ import {
 import { stepGenesis } from '../modules/genesis.js'
 import { processMessage } from '../modules/brain.js'
 import { extractAndLearn } from '../modules/memory/learner.js'
+import { sanitizeConversationalText, splitIntoLineBubbles } from '../modules/conversationStyle.js'
 import { applyActionTags, promiseSafetyNet } from '../modules/proactive/actionTags.js'
 import { markProactiveReplied } from '../modules/proactive/care.js'
 import { getCharacterForTenant } from '../modules/characters.js'
@@ -225,7 +226,7 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
   const conv = await db.query<{ id: number }>(
     `INSERT INTO conversations (tenant_id, user_id, message_type, user_message, ai_response, points_charged)
      VALUES ($1, $2, 'text', $3, $4, $5) RETURNING id`,
-    [user.id, text, actions.cleanText, delivered.totalCost],
+    [user.id, text, delivered.conversationText, delivered.totalCost],
   )
 
   // 安全網：她嘴巴答應但沒吐標籤 → 從對話補抽約定（fire-and-forget）
@@ -250,7 +251,8 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
     userId: user.id,
     userName: user.display_name ?? '對方',
     userMessage: text,
-    aiResponse: output.reply,
+    aiResponse: delivered.conversationText,
+    canShapeSoul: user.can_shape_soul,
   }).catch((err) => app.log.warn({ err }, 'memory learner failed'))
 }
 
@@ -264,12 +266,15 @@ async function deliverReply(
   tenantId: number,
   reply: string,
   textCharge: { cost: number; balance: number; charged: boolean; gate: string },
-): Promise<{ totalCost: number }> {
+): Promise<{ totalCost: number; conversationText: string }> {
   const voiceExtract = extractVoiceTags(reply)
   const imageExtract = extractImageTags(voiceExtract.cleanText)
   const { clips } = voiceExtract
   const { prompts } = imageExtract
   let cleanText = imageExtract.cleanText
+  const conversationText = sanitizeConversationalText(
+    [imageExtract.cleanText, ...clips.map((clip) => clip.text)].filter(Boolean).join('\n'),
+  )
   const messages: LineMessage[] = []
   let totalCost = textCharge.cost
   let balance = textCharge.balance
@@ -323,15 +328,17 @@ async function deliverReply(
     if (!ok) cleanText = [cleanText, '（我想畫給你，但這次沒畫出來……我再練習一下）'].filter(Boolean).join('\n')
   }
 
-  const finalMessages: LineMessage[] = []
-  if (cleanText) finalMessages.push({ type: 'text', text: cleanText })
+  cleanText = sanitizeConversationalText(cleanText)
+  const reservedSlots = messages.length + (totalCost > 0 ? 1 : 0)
+  const textSlots = Math.max(1, 5 - reservedSlots)
+  const finalMessages: LineMessage[] = splitIntoLineBubbles(cleanText, textSlots).map((text) => ({ type: 'text', text }))
   finalMessages.push(...messages)
   if (totalCost > 0) {
     finalMessages.push({ type: 'text', text: `⚡ 本次 -${totalCost} 點｜餘額 ${balance} 點` })
   }
   if (finalMessages.length === 0) finalMessages.push({ type: 'text', text: '嗯，我在這裡。' })
   await replyMessages(replyToken, finalMessages)
-  return { totalCost }
+  return { totalCost, conversationText }
 }
 
 // ── 聽音檔：語音訊息 → STT → 當一般對話處理 ─────────────────
@@ -397,7 +404,7 @@ async function handleAudioEvent(app: FastifyInstance, event: LineEvent): Promise
   await db.query(
     `INSERT INTO conversations (tenant_id, user_id, message_type, user_message, ai_response, points_charged)
      VALUES ($1, $2, 'audio', $3, $4, $5)`,
-    [user.id, `[語音] ${transcript}`, output.reply, delivered.totalCost],
+    [user.id, `[語音] ${transcript}`, delivered.conversationText, delivered.totalCost],
   )
 }
 
@@ -467,6 +474,6 @@ async function handleMediaEvent(app: FastifyInstance, event: LineEvent): Promise
   await db.query(
     `INSERT INTO conversations (tenant_id, user_id, message_type, user_message, ai_response, points_charged)
      VALUES ($1, $2, $3, $4, $5, $6)`,
-    [user.id, msgType, isImage ? '[圖片]' : `[檔案] ${fileName}`, output.reply, delivered.totalCost],
+    [user.id, msgType, isImage ? '[圖片]' : `[檔案] ${fileName}`, delivered.conversationText, delivered.totalCost],
   )
 }

@@ -15,4 +15,10 @@ describe('extractVoiceTags', () => {
     expect(result.cleanText).toBe('')
     expect(result.clips).toEqual([{ text: '這件事可以慢慢來。', emotion: 'happy' }])
   })
+
+  it('removes AI-looking Markdown before sending text to TTS', () => {
+    const result = extractVoiceTags('[VOICE_GEN|**先看問題。** -- 再慢慢處理。]')
+
+    expect(result.clips[0]?.text).toBe('先看問題。再慢慢處理。')
+  })
 })

@@ -26,6 +26,8 @@ const configSchema = z.object({
   // 商用 LINE OA（獨立於本尊，絕不共用）
   lineChannelToken: blankAsUndefined(z.string().default('not-configured')),
   lineChannelSecret: blankAsUndefined(z.string().default('not-configured')),
+  // 精確 LINE User ID 白名單；只從 Secret Manager 注入，不進程式庫。
+  soulAuthorizedLineUserIds: blankAsUndefined(z.string().default('')),
 
   // LLM（bridgeSecret 有值 → 走 zhu-bridge 吃 Max 月費；否則直連 API 燒 key）
   anthropicApiKey: blankAsUndefined(z.string().default('not-configured')),
@@ -62,6 +64,7 @@ const rawConfig = {
   jwtSecret: process.env.JWT_SECRET,
   lineChannelToken: process.env.LINE_CHANNEL_TOKEN,
   lineChannelSecret: process.env.LINE_CHANNEL_SECRET,
+  soulAuthorizedLineUserIds: process.env.SOUL_AUTHORIZED_LINE_USER_IDS,
   anthropicApiKey: process.env.ANTHROPIC_API_KEY,
   llmBaseUrl: process.env.LLM_BASE_URL,
   bridgeSecret: process.env.BRIDGE_SECRET,
@@ -79,6 +82,14 @@ const rawConfig = {
 }
 
 export const config = configSchema.parse(rawConfig)
+
+const soulAuthorityIds = new Set(
+  config.soulAuthorizedLineUserIds.split(',').map((id) => id.trim()).filter(Boolean),
+)
+
+export function isSoulAuthorizedLineUser(lineUserId: string): boolean {
+  return soulAuthorityIds.has(lineUserId)
+}
 
 /** 上線前的健檢：缺什麼直說，不要靜默失敗（本尊的教訓） */
 export function warnMissingConfig(log: (msg: string) => void): void {

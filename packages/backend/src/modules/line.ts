@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { config } from '../config.js'
+import { splitIntoLineBubbles } from './conversationStyle.js'
 
 /** LINE Messaging API 最小封裝（商用 OA；與本尊 OA 完全獨立） */
 
@@ -49,9 +50,10 @@ async function lineApi(path: string, payload: unknown): Promise<void> {
 }
 
 export async function replyText(replyToken: string, texts: string[]): Promise<void> {
+  const bubbles = texts.flatMap((text) => splitIntoLineBubbles(text, 5)).slice(0, 5)
   await lineApi('/v2/bot/message/reply', {
     replyToken,
-    messages: texts.slice(0, 5).map((text): LineTextMessage => ({ type: 'text', text })),
+    messages: bubbles.map((text): LineTextMessage => ({ type: 'text', text })),
   })
 }
 
@@ -61,9 +63,10 @@ export async function replyMessages(replyToken: string, messages: LineMessage[])
 }
 
 export async function pushText(lineUserId: string, texts: string[]): Promise<void> {
+  const bubbles = texts.flatMap((text) => splitIntoLineBubbles(text, 5)).slice(0, 5)
   await lineApi('/v2/bot/message/push', {
     to: lineUserId,
-    messages: texts.slice(0, 5).map((text): LineTextMessage => ({ type: 'text', text })),
+    messages: bubbles.map((text): LineTextMessage => ({ type: 'text', text })),
   })
 }
 
@@ -72,12 +75,19 @@ export async function getMessageContent(
   messageId: string,
 ): Promise<{ data: Buffer; contentType: string } | null> {
   if (config.lineChannelToken === 'not-configured') return null
-  const res = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
-    headers: { Authorization: `Bearer ${config.lineChannelToken}` },
-  })
-  if (!res.ok) return null
-  const contentType = res.headers.get('content-type') ?? 'application/octet-stream'
-  return { data: Buffer.from(await res.arrayBuffer()), contentType }
+  const delays = [0, 500, 1000, 1500, 2500, 4000]
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt] > 0) await new Promise((resolve) => setTimeout(resolve, delays[attempt]))
+    const res = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
+      headers: { Authorization: `Bearer ${config.lineChannelToken}` },
+    })
+    // LINE 會在大型音訊仍在準備時回 202；等待後重取，不能把 webhook 當成功吞掉。
+    if (res.status === 202) continue
+    if (!res.ok) return null
+    const contentType = res.headers.get('content-type') ?? 'application/octet-stream'
+    return { data: Buffer.from(await res.arrayBuffer()), contentType }
+  }
+  throw new Error('LINE media content is still processing after retries')
 }
 
 export async function getLineProfile(

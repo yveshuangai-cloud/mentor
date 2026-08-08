@@ -107,13 +107,14 @@ export async function linkNewConversations(
   if (!topics.length || !isLlmConfigured()) return { linked: 0, skipped: 0 }
 
   const convR = await db.query<{ id: number; user_message: string | null; ai_response: string | null }>(
-    `SELECT id, user_message, ai_response FROM conversations
-     WHERE tenant_id = $1
+    `SELECT c.id, c.user_message, c.ai_response FROM conversations c
+     JOIN users u ON u.id = c.user_id
+     WHERE c.tenant_id = $1 AND u.can_shape_soul = TRUE
        AND NOT EXISTS (
          SELECT 1 FROM memory_topic_links l
-         WHERE l.source_type = 'conversation' AND l.source_id = conversations.id
+         WHERE l.source_type = 'conversation' AND l.source_id = c.id
        )
-     ORDER BY created_at ASC LIMIT ${maxPerRun}`,
+     ORDER BY c.created_at ASC LIMIT ${maxPerRun}`,
   )
   const valid = convR.rows.filter((c) => {
     const um = (c.user_message ?? '').trim()

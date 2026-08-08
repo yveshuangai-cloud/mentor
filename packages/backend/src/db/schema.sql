@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
   line_user_id  TEXT NOT NULL UNIQUE,
   display_name  TEXT,
   picture_url   TEXT,
+  can_shape_soul BOOLEAN NOT NULL DEFAULT FALSE,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );

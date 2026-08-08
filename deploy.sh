@@ -30,7 +30,7 @@ gcloud run deploy "$SERVICE" \
   --service-account="mantou-runtime@${PROJECT}.iam.gserviceaccount.com" \
   --add-cloudsql-instances="$SQL_CONN" \
   --set-env-vars="NODE_ENV=production,PUBLIC_BASE_URL=${INITIAL_URL},VOICE_BUCKET=mantou-voice-2026,LINEPAY_SANDBOX=true" \
-  --set-secrets="DATABASE_URL=mantou-database-url:latest,LINE_CHANNEL_TOKEN=mantou-line-channel-token:latest,LINE_CHANNEL_SECRET=mantou-line-channel-secret:latest,JWT_SECRET=mantou-jwt-secret:latest,ADMIN_TOKEN=mantou-admin-token:latest,CRON_SECRET=mantou-cron-secret:latest,ANTHROPIC_API_KEY=mantou-anthropic-api-key:latest,MINIMAX_API_KEY=mantou-minimax-api-key:latest,MINIMAX_VOICE_ID=mantou-minimax-voice-id:latest,GEMINI_API_KEY=mantou-gemini-api-key:latest"
+  --set-secrets="DATABASE_URL=mantou-database-url:latest,LINE_CHANNEL_TOKEN=mantou-line-channel-token:latest,LINE_CHANNEL_SECRET=mantou-line-channel-secret:latest,SOUL_AUTHORIZED_LINE_USER_IDS=mantou-soul-authorized-line-users:latest,JWT_SECRET=mantou-jwt-secret:latest,ADMIN_TOKEN=mantou-admin-token:latest,CRON_SECRET=mantou-cron-secret:latest,ANTHROPIC_API_KEY=mantou-anthropic-api-key:latest,MINIMAX_API_KEY=mantou-minimax-api-key:latest,MINIMAX_VOICE_ID=mantou-minimax-voice-id:latest,GEMINI_API_KEY=mantou-gemini-api-key:latest"
 
 RUN_URL="$(gcloud run services describe "$SERVICE" \
   --account="$ACCOUNT" \

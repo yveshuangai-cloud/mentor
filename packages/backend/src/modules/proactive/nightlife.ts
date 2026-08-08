@@ -24,9 +24,11 @@ export async function generateTenantDiary(tenantId: number, dateTaipei: string):
 
   // 台北日界線（本尊 06-17 修的雷：DATE() 預設 UTC）
   const convR = await db.query<{ user_message: string | null; ai_response: string | null; created_at: Date }>(
-    `SELECT user_message, ai_response, created_at FROM conversations
-     WHERE tenant_id = $1 AND DATE(created_at AT TIME ZONE 'Asia/Taipei') = $2
-     ORDER BY created_at ASC`,
+    `SELECT c.user_message, c.ai_response, c.created_at FROM conversations c
+     JOIN users u ON u.id = c.user_id
+     WHERE c.tenant_id = $1 AND u.can_shape_soul = TRUE
+       AND DATE(c.created_at AT TIME ZONE 'Asia/Taipei') = $2
+     ORDER BY c.created_at ASC`,
     [dateTaipei],
   )
   if (!convR.rows.length || !isLlmConfigured()) return false

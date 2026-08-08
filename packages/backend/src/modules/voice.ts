@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Storage } from '@google-cloud/storage'
 import { config } from '../config.js'
+import { sanitizeConversationalText } from './conversationStyle.js'
 
 /**
  * 她的聲音（[VOICE_GEN|…] 技能的執行端）：
@@ -45,7 +46,7 @@ export function extractVoiceTags(reply: string): ExtractedVoice {
         text = text.replace(re, '')
       }
     }
-    text = text.trim()
+    text = sanitizeConversationalText(text)
     if (text) clips.push({ text, emotion })
     return ''
   })

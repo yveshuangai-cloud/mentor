@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { platformQuery } from '../db/index.js'
 import { pushText } from './line.js'
+import { isSoulAuthorizedLineUser } from '../config.js'
 
 /**
  * 租戶路由與成員綁定（交接書 §5/§11）：
@@ -13,6 +14,7 @@ export interface UserRow {
   id: number
   line_user_id: string
   display_name: string | null
+  can_shape_soul: boolean
 }
 
 export interface TenantRow {
@@ -41,14 +43,15 @@ export async function upsertUser(
   profile: { displayName?: string; pictureUrl?: string },
 ): Promise<UserRow> {
   const res = await platformQuery<UserRow>(
-    `INSERT INTO users (line_user_id, display_name, picture_url)
-     VALUES ($1, $2, $3)
+    `INSERT INTO users (line_user_id, display_name, picture_url, can_shape_soul)
+     VALUES ($1, $2, $3, $4)
      ON CONFLICT (line_user_id) DO UPDATE
        SET display_name = COALESCE(EXCLUDED.display_name, users.display_name),
            picture_url  = COALESCE(EXCLUDED.picture_url, users.picture_url),
+           can_shape_soul = EXCLUDED.can_shape_soul,
            updated_at = now()
-     RETURNING id, line_user_id, display_name`,
-    [lineUserId, profile.displayName ?? null, profile.pictureUrl ?? null],
+     RETURNING id, line_user_id, display_name, can_shape_soul`,
+    [lineUserId, profile.displayName ?? null, profile.pictureUrl ?? null, isSoulAuthorizedLineUser(lineUserId)],
   )
   return res.rows[0]
 }
