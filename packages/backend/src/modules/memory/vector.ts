@@ -5,7 +5,7 @@ import { forTenant } from '../../db/tenantDb.js'
  * 🔎 語意記憶層（本尊五層的向量層，商用重寫版）：
  * - 本尊用 Cloudflare Vectorize（metadata 過濾 fail-open ＋ godView 繞過 → 商用不照抄）。
  * - 商用版：embedding 存 memory_vectors（tenant_id 貫穿、wrapper 強制 → fail-closed 天然成立）。
- * - Embedding：Gemini text-embedding-004（768 維；沒設 key → 關鍵字 fallback，功能不斷）。
+ * - Embedding：Gemini gemini-embedding-2（固定 768 維；沒設 key → 關鍵字 fallback，功能不斷）。
  * - 規模備註：每戶記憶量 < 幾千條，app 層 cosine 足夠；量大後遷 pgvector（介面不變）。
  */
 
@@ -25,14 +25,15 @@ export function embeddingConfigured(): boolean {
 async function embed(texts: string[]): Promise<number[][]> {
   if (embedOverride) return embedOverride(texts)
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:batchEmbedContents?key=${config.geminiApiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:batchEmbedContents?key=${config.geminiApiKey}`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         requests: texts.map((t) => ({
-          model: 'models/text-embedding-004',
+          model: 'models/gemini-embedding-2',
           content: { parts: [{ text: t.slice(0, 2000) }] },
+          outputDimensionality: 768,
         })),
       }),
     },

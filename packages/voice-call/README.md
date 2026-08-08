@@ -88,7 +88,7 @@ VITE_WS_URL=wss://<後端網域>/api/voice-call/ws
 ```
 DEEPGRAM_API_KEY=      # 即時 ASR
 MINIMAX_API_KEY=       # 串流 TTS
-MINIMAX_GROUP_ID=
+MINIMAX_GROUP_ID=       # 國際版通常留空；舊帳號要求時才填
 VOICE_ID_ZH= / VOICE_ID_EN=   # 聲紋
 ANTHROPIC_API_KEY= / OPENROUTER_API_KEY=（或 Vertex ADC）  # 通話大腦
 LINE_CHANNEL_TOKEN= / LINE_CHANNEL_SECRET=

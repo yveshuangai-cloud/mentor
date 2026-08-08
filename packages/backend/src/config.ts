@@ -46,7 +46,8 @@ const configSchema = z.object({
 
   // MiniMax 克隆聲（[VOICE_GEN] 技能執行端）
   minimaxApiKey: blankAsUndefined(z.string().default('not-configured')),
-  minimaxGroupId: blankAsUndefined(z.string().default('not-configured')),
+  // MiniMax 國際版不要求 GroupId；僅舊帳號／舊端點需要時才填。
+  minimaxGroupId: blankAsUndefined(z.string().default('')),
   minimaxVoiceId: blankAsUndefined(z.string().default('not-configured')),
 
   // Gemini（聽音檔 STT＋畫圖生圖執行端）

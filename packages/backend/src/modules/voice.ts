@@ -3,6 +3,7 @@ import { writeFile, readFile, unlink } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Storage } from '@google-cloud/storage'
 import { config } from '../config.js'
 
 /**
@@ -55,7 +56,10 @@ export function extractVoiceTags(reply: string): ExtractedVoice {
 // ── MiniMax TTS ────────────────────────────────────────
 
 export async function synthesize(clip: VoiceClip): Promise<{ mp3: Buffer; durationMs: number }> {
-  const res = await fetch(`https://api.minimax.io/v1/t2a_v2?GroupId=${config.minimaxGroupId}`, {
+  const groupQuery = config.minimaxGroupId
+    ? `?GroupId=${encodeURIComponent(config.minimaxGroupId)}`
+    : ''
+  const res = await fetch(`https://api.minimax.io/v1/t2a_v2${groupQuery}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${config.minimaxApiKey}`,
@@ -115,32 +119,26 @@ export async function m4aToMp3(m4a: Buffer): Promise<Buffer> {
   return ffmpegConvert(m4a, 'm4a', 'mp3', ['-c:a', 'libmp3lame', '-b:a', '64k'])
 }
 
-// ── GCS 上傳（ADC via metadata server，天條：不注入 SA JSON）────
+// ── GCS 上傳（ADC，天條：不注入 SA JSON；私有物件用短效 signed URL）────
 
 const VOICE_BUCKET = process.env.VOICE_BUCKET ?? 'mantou-voice-2026'
-
-async function adcToken(): Promise<string> {
-  const res = await fetch(
-    'http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token',
-    { headers: { 'Metadata-Flavor': 'Google' } },
-  )
-  if (!res.ok) throw new Error(`metadata token HTTP ${res.status}`)
-  return ((await res.json()) as { access_token: string }).access_token
-}
+const storage = new Storage()
+const SIGNED_URL_TTL_MS = 15 * 60 * 1000
 
 export async function uploadMedia(buf: Buffer, contentType: string, ext: string, prefix = 'media'): Promise<string> {
   const name = `${prefix}/${randomUUID()}.${ext}`
-  const token = await adcToken()
-  const res = await fetch(
-    `https://storage.googleapis.com/upload/storage/v1/b/${VOICE_BUCKET}/o?uploadType=media&name=${encodeURIComponent(name)}`,
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': contentType },
-      body: new Uint8Array(buf),
-    },
-  )
-  if (!res.ok) throw new Error(`GCS upload HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
-  return `https://storage.googleapis.com/${VOICE_BUCKET}/${name}`
+  const file = storage.bucket(VOICE_BUCKET).file(name)
+  await file.save(buf, {
+    contentType,
+    resumable: false,
+    metadata: { cacheControl: 'private, max-age=900' },
+  })
+  const [url] = await file.getSignedUrl({
+    version: 'v4',
+    action: 'read',
+    expires: Date.now() + SIGNED_URL_TTL_MS,
+  })
+  return url
 }
 
 export async function uploadAudio(m4a: Buffer): Promise<string> {
