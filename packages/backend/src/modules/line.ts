@@ -70,6 +70,18 @@ export async function pushText(lineUserId: string, texts: string[]): Promise<voi
   })
 }
 
+/**
+ * 在一對一聊天室顯示 LINE 原生的三點 loading 動畫。
+ * LINE 規格只接受 5–60 秒；OA 一送出真正訊息，動畫會自動消失。
+ */
+export async function startLoadingAnimation(lineUserId: string, seconds = 60): Promise<void> {
+  const loadingSeconds = Math.max(5, Math.min(60, Math.round(seconds)))
+  await lineApi('/v2/bot/chat/loading/start', {
+    chatId: lineUserId,
+    loadingSeconds,
+  })
+}
+
 /** 下載用戶傳來的媒體內容（圖片/檔案/語音；走 api-data host） */
 export async function getMessageContent(
   messageId: string,

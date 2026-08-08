@@ -6,6 +6,7 @@ import {
   pushText,
   getLineProfile,
   getMessageContent,
+  startLoadingAnimation,
   type LineMessage,
 } from '../modules/line.js'
 import { extractVoiceTags, clipToLineAudio, voiceConfigured, m4aToMp3 } from '../modules/voice.js'
@@ -103,10 +104,17 @@ export async function processQueuedWebhookEvents(app: FastifyInstance, limit = 2
 async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void> {
   if (event.type !== 'message') return
   const msgType = event.message?.type
+  const lineUserId = event.source?.userId
+  const supportedMessage = msgType === 'text' || msgType === 'audio' || msgType === 'image' || msgType === 'file'
+  if (supportedMessage && lineUserId && event.source?.type === 'user') {
+    // 不等待動畫 API 才開始動腦；失敗也不能擋住正常回覆。
+    void startLoadingAnimation(lineUserId, 60).catch((err) =>
+      app.log.warn({ err }, 'LINE loading animation failed'),
+    )
+  }
   if (msgType === 'image' || msgType === 'file') return handleMediaEvent(app, event)
   if (msgType === 'audio') return handleAudioEvent(app, event)
   if (msgType !== 'text') return
-  const lineUserId = event.source?.userId
   const replyToken = event.replyToken
   const text = (event.message?.text ?? '').trim()
   if (!lineUserId || !replyToken || !text) return
