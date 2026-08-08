@@ -1,6 +1,6 @@
 # 慢慢 語音通話 LIFF 前端 — Cloudflare Worker（靜態資產託管）
 # 用 Workers 靜態資產（不是 Pages）→ 現有 API token 的 Workers Scripts:Edit 就能部署。
-name = "manman-call"
+name = "mantou-call"
 compatibility_date = "2024-11-01"
 
 [assets]

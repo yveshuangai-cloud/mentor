@@ -70,8 +70,8 @@ export const linePayProvider: PaymentProvider = {
         {
           id: 'points',
           amount: input.amountTwd,
-          name: '漫漫點數包',
-          products: [{ name: `漫漫點數 ${input.points} 點`, quantity: 1, price: input.amountTwd }],
+          name: '饅頭點數包',
+          products: [{ name: `饅頭點數 ${input.points} 點`, quantity: 1, price: input.amountTwd }],
         },
       ],
       redirectUrls: { confirmUrl: input.confirmUrl, cancelUrl: input.cancelUrl },

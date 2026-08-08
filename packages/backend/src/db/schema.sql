@@ -1,5 +1,5 @@
 -- ============================================================
--- 新生漫漫 · 商用陪伴平台 — 多租戶 schema v1
+-- 饅頭 · 語氣靈 AI 平台 — 多租戶 schema v1
 -- 鐵則：租戶層資料表一律帶 tenant_id；查詢一律走 tenantDb wrapper。
 -- 慣例：所有時間欄位 TIMESTAMPTZ（沿用本尊 052 統一慣例）。
 -- ============================================================
@@ -66,6 +66,28 @@ CREATE TABLE IF NOT EXISTS tenant_members (
 CREATE UNIQUE INDEX IF NOT EXISTS tenant_members_one_active_per_character
   ON tenant_members (user_id, character_id) WHERE status IN ('pending','confirmed');
 CREATE INDEX IF NOT EXISTS tenant_members_by_tenant ON tenant_members (tenant_id, status);
+
+-- LINE webhook durable inbox：先落庫再處理，跨實例以 event_id 去重。
+-- pending/retry 由即時 kick 或 cron 撈取；processing 超時可重新認領。
+CREATE TABLE IF NOT EXISTS line_webhook_events (
+  event_id        TEXT PRIMARY KEY,
+  message_id      TEXT,
+  payload         JSONB NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'pending'
+                  CHECK (status IN ('pending','processing','retry','processed','dead')),
+  attempts        INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  locked_at       TIMESTAMPTZ,
+  processed_at    TIMESTAMPTZ,
+  last_error      TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS line_webhook_message_once
+  ON line_webhook_events (message_id) WHERE message_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS line_webhook_events_due
+  ON line_webhook_events (next_attempt_at, created_at)
+  WHERE status IN ('pending','retry','processing');
 
 -- 活的扣點設定表（平台層：規則全租戶共用，後台可即時調）
 CREATE TABLE IF NOT EXISTS point_rules (
@@ -142,6 +164,9 @@ CREATE TABLE IF NOT EXISTS payments (
   paid_at       TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS payments_by_tenant ON payments (tenant_id, created_at DESC);
+-- 一筆付款只能產生一個入點批次；即使 callback 重送或並發，也不能重複入點。
+CREATE UNIQUE INDEX IF NOT EXISTS point_lots_one_per_payment
+  ON point_lots (payment_id) WHERE payment_id IS NOT NULL;
 
 -- ────────────────────────────────────────────
 -- 租戶層（一律帶 tenant_id；查詢一律走 tenantDb wrapper）

@@ -1104,8 +1104,8 @@ export async function streamVoiceBrain(options: VoiceBrainStreamOptions): Promis
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${config.openrouterApiKey}`,
-        'HTTP-Referer': 'https://manman.local',
-        'X-Title': 'ManMan-Voice',
+        'HTTP-Referer': 'https://mantou.local',
+        'X-Title': 'Mantou-Voice',
       },
       body: JSON.stringify({
         model: config.openrouterModel,

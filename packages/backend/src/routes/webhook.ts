@@ -41,6 +41,7 @@ import {
   InsufficientPointsError,
 } from '../modules/points.js'
 import { forTenant } from '../db/tenantDb.js'
+import { drainWebhookEvents, enqueueWebhookEvents } from '../modules/webhookQueue.js'
 
 /**
  * 商用 LINE OA webhook（精簡路由，職責分離——本尊 3000 行 monolith 的教訓）：
@@ -49,6 +50,7 @@ import { forTenant } from '../db/tenantDb.js'
  */
 
 interface LineEvent {
+  webhookEventId?: string
   type: string
   replyToken?: string
   source?: { userId?: string; type?: string }
@@ -61,17 +63,6 @@ const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 const INVITE_CODE_RE = /^MM-[0-9A-F]{8}$/i
 const CONFIRM_RE = /^確認\s*(\S+)\s*(?:是\s*)?(\S+)$/
 const REJECT_RE = /^拒絕\s*(\S+)$/
-
-// 每 process 去重（多實例部署時需換 Redis/DB — 本尊已知限制，先沿用）
-const processedMessageIds = new Map<string, number>()
-function isDuplicate(messageId: string | undefined): boolean {
-  if (!messageId) return false
-  const now = Date.now()
-  for (const [id, ts] of processedMessageIds) if (now - ts > 60_000) processedMessageIds.delete(id)
-  if (processedMessageIds.has(messageId)) return true
-  processedMessageIds.set(messageId, now)
-  return false
-}
 
 export async function webhookRoutes(app: FastifyInstance): Promise<void> {
   // 需要 raw body 驗 LINE 簽章
@@ -86,14 +77,21 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(403).send({ error: 'bad signature' })
     }
     const payload = JSON.parse(raw.toString('utf8')) as { events?: LineEvent[] }
+    const events = payload.events ?? []
+    await enqueueWebhookEvents(events)
     reply.send({ status: 'ok' }) // 先回 200，事件非同步處理
 
-    for (const event of payload.events ?? []) {
-      void handleEvent(app, event).catch((err) => {
-        app.log.error({ err }, 'webhook event error')
-      })
-    }
+    // 低延遲 best-effort；若 Cloud Run 回應後凍結，process-webhooks cron 會接手。
+    void processQueuedWebhookEvents(app).catch((err) => app.log.error({ err }, 'webhook drain error'))
   })
+}
+
+export async function processQueuedWebhookEvents(app: FastifyInstance, limit = 20): Promise<{ processed: number; failed: number }> {
+  return drainWebhookEvents<LineEvent>(
+    (event) => handleEvent(app, event),
+    (message) => app.log.warn(message),
+    limit,
+  )
 }
 
 async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void> {
@@ -102,7 +100,6 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
   if (msgType === 'image' || msgType === 'file') return handleMediaEvent(app, event)
   if (msgType === 'audio') return handleAudioEvent(app, event)
   if (msgType !== 'text') return
-  if (isDuplicate(event.message?.id)) return
   const lineUserId = event.source?.userId
   const replyToken = event.replyToken
   const text = (event.message?.text ?? '').trim()
@@ -339,7 +336,6 @@ async function deliverReply(
 
 // ── 聽音檔：語音訊息 → STT → 當一般對話處理 ─────────────────
 async function handleAudioEvent(app: FastifyInstance, event: LineEvent): Promise<void> {
-  if (isDuplicate(event.message?.id)) return
   const lineUserId = event.source?.userId
   const replyToken = event.replyToken
   const messageId = event.message?.id
@@ -407,7 +403,6 @@ async function handleAudioEvent(app: FastifyInstance, event: LineEvent): Promise
 
 // ── 讀圖／讀 PDF（vision 閘道；一律直連 API）─────────────────
 async function handleMediaEvent(app: FastifyInstance, event: LineEvent): Promise<void> {
-  if (isDuplicate(event.message?.id)) return
   const lineUserId = event.source?.userId
   const replyToken = event.replyToken
   const messageId = event.message?.id

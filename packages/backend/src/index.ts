@@ -5,7 +5,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config, warnMissingConfig } from './config.js'
 import { autoMigrate } from './db/index.js'
-import { webhookRoutes } from './routes/webhook.js'
+import { processQueuedWebhookEvents, webhookRoutes } from './routes/webhook.js'
 import { adminRoutes } from './routes/admin.js'
 import { paymentRoutes } from './routes/payments.js'
 import { expireSweep } from './modules/points.js'
@@ -27,7 +27,7 @@ async function bootstrap(): Promise<void> {
   await app.register(adminRoutes, { prefix: '/api/admin' })
   await app.register(paymentRoutes, { prefix: '/api/payments' })
 
-  app.get('/health', async () => ({ ok: true, service: 'manman-platform', ts: new Date().toISOString() }))
+  app.get('/health', async () => ({ ok: true, service: 'mantou-platform', ts: new Date().toISOString() }))
 
   // 後台 UI（單檔、免建置；權限靠 UI 內輸入的 X-Admin-Token 打 admin API）
   app.get('/admin', async (_req, reply) => {
@@ -74,6 +74,15 @@ async function bootstrap(): Promise<void> {
     return { ok: true, ...result }
   })
 
+  // LINE webhook durable inbox 補處理（建議 Cloud Scheduler 每分鐘打一次）。
+  app.post('/api/cron/process-webhooks', async (req, reply) => {
+    if (!config.cronSecret || req.headers['x-cron-secret'] !== config.cronSecret) {
+      return reply.code(401).send({ error: 'unauthorized' })
+    }
+    const result = await processQueuedWebhookEvents(app, 50)
+    return { ok: true, ...result }
+  })
+
   // 本地開發才用計時器；Cloud Run request-based billing 下閒置實例會被回收，計時器不可靠
   if (config.nodeEnv === 'development') {
     setInterval(() => {
@@ -82,7 +91,7 @@ async function bootstrap(): Promise<void> {
   }
 
   await app.listen({ port: config.port, host: '0.0.0.0' })
-  log(`manman-platform backend up on :${config.port}`)
+  log(`mantou-platform backend up on :${config.port}`)
 }
 
 bootstrap().catch((err) => {

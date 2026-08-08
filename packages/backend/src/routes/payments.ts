@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { platformQuery } from '../db/index.js'
 import { getProvider } from '../modules/payments/index.js'
-import { grantPoints } from '../modules/points.js'
 import { config } from '../config.js'
+import { settlePayment } from '../modules/payments/settlement.js'
 
 /**
  * 金流（§8）：選點數包 → provider 付款 → 回調入點（記到期日）→ 帳本留痕。
@@ -77,28 +77,22 @@ export async function paymentRoutes(app: FastifyInstance): Promise<void> {
       }>(`SELECT id, tenant_id, amount_twd, points, status FROM payments WHERE order_id = $1`, [orderId])
       if (!payRes.rowCount) return reply.code(404).send({ error: 'order not found' })
       const payment = payRes.rows[0]
-      if (payment.status === 'paid') return reply.send({ ok: true, note: 'already paid' }) // 冪等
+      if (payment.status === 'paid') return reply.send({ ok: true, note: 'already paid' }) // 快路徑；交易內仍會再鎖定檢查
 
       const provider = getProvider('linepay')
       const result = await provider.handleCallback(
         { transactionId, orderId, amountTwd: payment.amount_twd },
         {},
       )
-      await platformQuery(
-        `UPDATE payments SET status = $2, raw_callback = $3, provider_txn = $4, paid_at = CASE WHEN $2 = 'paid' THEN now() ELSE paid_at END
-         WHERE order_id = $1`,
-        [orderId, result.ok ? 'paid' : 'failed', JSON.stringify(result.raw), result.providerTxn ?? null],
-      )
-      if (!result.ok) return reply.code(402).send({ ok: false })
-
-      const granted = await grantPoints(payment.tenant_id, payment.points, {
-        reason: 'purchase',
-        source: 'purchase',
-        paymentId: payment.id,
-        refType: 'payment',
-        refId: orderId,
+      const settled = await settlePayment(orderId, result)
+      if (!settled.found) return reply.code(404).send({ error: 'order not found' })
+      if (!settled.ok) return reply.code(402).send({ ok: false })
+      return reply.send({
+        ok: true,
+        note: settled.alreadyPaid ? 'already paid' : undefined,
+        balance: settled.balance,
+        expireAt: settled.expireAt,
       })
-      return reply.send({ ok: true, balance: granted.balance, expireAt: granted.expireAt })
     },
   )
 

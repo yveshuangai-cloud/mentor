@@ -1,4 +1,4 @@
-# manman-platform backend（monorepo：從 repo root build）
+# mantou-platform backend（monorepo：從 repo root build）
 FROM node:22-slim
 
 # ffmpeg：MiniMax mp3 → LINE audio 訊息要的 m4a

@@ -67,7 +67,7 @@ export interface SoulParts {
   skills: string
 }
 
-export async function loadCharacterCore(slug = 'manman'): Promise<SoulParts> {
+export async function loadCharacterCore(slug = 'mantou'): Promise<SoulParts> {
   const parts = await Promise.all(CORE_ORDER.map((f) => readSoulFile(slug, f)))
   const skills = await Promise.all(SKILL_FILES.map((f) => readSoulFile(slug, f)))
   const sep = '\n\n---\n\n'
@@ -79,6 +79,6 @@ export async function loadCharacterCore(slug = 'manman'): Promise<SoulParts> {
 }
 
 /** 家庭橋樑層：僅 family 模式租戶載入（§10 定案 B） */
-export async function loadFamilyBridge(slug = 'manman'): Promise<string> {
+export async function loadFamilyBridge(slug = 'mantou'): Promise<string> {
   return readSoulFile(slug, 'family-bridge.md')
 }

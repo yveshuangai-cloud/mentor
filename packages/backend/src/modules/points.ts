@@ -1,3 +1,4 @@
+import type pg from 'pg'
 import { platformQuery, withTransaction } from '../db/index.js'
 
 /**
@@ -52,22 +53,51 @@ export async function grantPoints(
   opts: { reason: string; source?: string; expireDays?: number; paymentId?: number; refType?: string; refId?: string },
 ): Promise<{ balance: number; expireAt: Date }> {
   if (points <= 0) throw new Error('grantPoints: points must be > 0')
+  return withTransaction((client) => grantPointsInTransaction(client, tenantId, points, opts))
+}
+
+/**
+ * 與 payment 狀態更新共用同一交易的入點版本。
+ * paymentId 有值時以 point_lots 的 partial unique index 保證 callback 重送不會重複入點。
+ */
+export async function grantPointsInTransaction(
+  client: pg.PoolClient,
+  tenantId: number,
+  points: number,
+  opts: { reason: string; source?: string; expireDays?: number; paymentId?: number; refType?: string; refId?: string },
+): Promise<{ balance: number; expireAt: Date; credited: boolean }> {
+  if (points <= 0) throw new Error('grantPointsInTransaction: points must be > 0')
   const expireDays = opts.expireDays ?? 90
-  return withTransaction(async (client) => {
-    const lot = await client.query<{ expire_at: Date }>(
-      `INSERT INTO point_lots (tenant_id, granted, remaining, expire_at, source, payment_id)
-       VALUES ($1, $2, $2, now() + ($3 || ' days')::interval, $4, $5)
-       RETURNING expire_at`,
-      [tenantId, points, String(expireDays), opts.source ?? 'purchase', opts.paymentId ?? null],
+  const paymentId = opts.paymentId ?? null
+  const lot = await client.query<{ expire_at: Date }>(
+    `INSERT INTO point_lots (tenant_id, granted, remaining, expire_at, source, payment_id)
+     VALUES ($1, $2, $2, now() + ($3 || ' days')::interval, $4, $5)
+     ON CONFLICT (payment_id) WHERE payment_id IS NOT NULL DO NOTHING
+     RETURNING expire_at`,
+    [tenantId, points, String(expireDays), opts.source ?? 'purchase', paymentId],
+  )
+
+  if (!lot.rowCount && paymentId != null) {
+    const existing = await client.query<{ expire_at: Date }>(
+      `SELECT expire_at FROM point_lots WHERE payment_id = $1`,
+      [paymentId],
     )
-    const balance = await balanceInTx(client, tenantId)
-    await client.query(
-      `INSERT INTO point_ledger (tenant_id, delta, reason, balance_after, expire_at, ref_type, ref_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [tenantId, points, opts.reason, balance, lot.rows[0].expire_at, opts.refType ?? null, opts.refId ?? null],
-    )
-    return { balance, expireAt: lot.rows[0].expire_at }
-  })
+    if (!existing.rowCount) throw new Error(`payment lot conflict without row: ${paymentId}`)
+    return {
+      balance: await balanceInTx(client, tenantId),
+      expireAt: existing.rows[0].expire_at,
+      credited: false,
+    }
+  }
+
+  const expireAt = lot.rows[0].expire_at
+  const balance = await balanceInTx(client, tenantId)
+  await client.query(
+    `INSERT INTO point_ledger (tenant_id, delta, reason, balance_after, expire_at, ref_type, ref_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [tenantId, points, opts.reason, balance, expireAt, opts.refType ?? null, opts.refId ?? null],
+  )
+  return { balance, expireAt, credited: true }
 }
 
 // ── 扣點（依閘道；FIFO 先扣快到期的）──────────────────────
@@ -158,11 +188,18 @@ export async function getNearestExpiry(
 /** 到期歸零（每日 cron）：把過期批次清零並記帳 */
 export async function expireSweep(log: (msg: string) => void): Promise<void> {
   await withTransaction(async (client) => {
-    const expired = await client.query<{ tenant_id: number; total: string }>(
-      `UPDATE point_lots SET remaining = 0
+    // 先鎖定並讀出「歸零前」餘額；UPDATE ... RETURNING remaining 只會拿到更新後的 0。
+    const expired = await client.query<{ id: number; tenant_id: number; total: number }>(
+      `SELECT id, tenant_id, remaining AS total FROM point_lots
        WHERE remaining > 0 AND expire_at <= now()
-       RETURNING tenant_id, remaining AS total`,
+       FOR UPDATE`,
     )
+    if (expired.rowCount) {
+      await client.query(
+        `UPDATE point_lots SET remaining = 0 WHERE id = ANY($1::bigint[])`,
+        [expired.rows.map((row) => row.id)],
+      )
+    }
     const byTenant = new Map<number, number>()
     for (const row of expired.rows) {
       byTenant.set(row.tenant_id, (byTenant.get(row.tenant_id) ?? 0) + Number(row.total))

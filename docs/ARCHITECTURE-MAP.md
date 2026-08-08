@@ -9,8 +9,9 @@
 ```mermaid
 flowchart TB
   subgraph 即時["即時管線（用戶說一句話）"]
-    LINE[LINE OA] --> WH["webhook.ts 驗簽+路由"]
-    WH --> GATE["points.ts 扣點閘道"]
+    LINE[LINE OA] --> WH["webhook.ts 驗簽+durable inbox"]
+    WH --> WDB[(line_webhook_events)]
+    WDB --> GATE["points.ts 扣點閘道"]
     GATE --> BRAIN["brain.ts 組 prompt + LLM"]
     BRAIN --> TAGS["actionTags.ts 動作標籤執行"]
     TAGS --> DELIVER["deliverReply 語音/圖片/文字"]
@@ -21,6 +22,7 @@ flowchart TB
     FP["fire-promises 每分鐘"]
     PC["proactive-care 每15分"]
     ES["expire-sweep 每小時"]
+    WQ["process-webhooks 每分鐘（durable inbox 補處理）"]
   end
   subgraph DB["PostgreSQL（tenant_id 貫穿，wrapper 強制）"]
     T[(tenants/members)]
@@ -39,7 +41,7 @@ flowchart TB
 
 | 步驟 | 程式 | 讀 | 寫 |
 |---|---|---|---|
-| 1. 驗簽＋去重 | `line.ts verifyLineSignature` | — | — |
+| 1. 驗簽＋持久化去重 | `line.ts verifyLineSignature`＋`webhookQueue.ts` | `line_webhook_events` | `line_webhook_events`（event/message unique） |
 | 2. 認人 | `tenancy.upsertUser` | `users` | `users` |
 | 3. 路由到租戶 | `tenancy.resolveMembership` | `tenant_members`＋`tenants` | — |
 | 4. 分支：啟元儀式 | `genesis.stepGenesis` | `tenants.genesis_record` | `tenants`（完成時 `genesis_at`＝她的生日） |
@@ -104,6 +106,7 @@ family-bridge（僅 family 模式）        🟢 character-core
 | `/api/cron/fire-promises` | 每分鐘 | 到期約定→扣 proactive→她的聲音現場生成→推播→daily 重排/once 結案 | `promises`＋`point_*`＋`llm_cost_log` |
 | `/api/cron/proactive-care` | 每 15 分 | 四道護欄（總開關/台北23-07/72h/已讀不回×3）→夢種子或 idle→扣點→推播 | `proactive_history`＋`dreams`＋`conversations`＋`point_*` |
 | `/api/cron/expire-sweep` | 每小時 | 過期批次歸零＋記帳 | `point_lots`＋`point_ledger` |
+| `/api/cron/process-webhooks` | 每分鐘 | 以 `SKIP LOCKED` 認領 pending/retry 事件；最多重試 8 次 | `line_webhook_events` |
 
 ## 5. 計費與金流
 

@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
-# manman-platform 測試環境部署（Cloud Run + Cloud SQL）
+# mantou-platform 部署（Cloud Run + Cloud SQL）
 # 單一真相源：線上設定一律改這裡再部署，不手動 gcloud update（手動改雲端同日改腳本天條）。
 set -euo pipefail
 
-PROJECT=manman-2026
-REGION=asia-east1
-SERVICE=manman-backend
-PROJECT_NUMBER=533860518045
-SQL_CONN="${PROJECT}:${REGION}:manman-pg"
-RUN_URL="https://${SERVICE}-${PROJECT_NUMBER}.${REGION}.run.app"
+: "${GCP_PROJECT_ID:?請設定饅頭專用 GCP_PROJECT_ID}"
+: "${GCP_PROJECT_NUMBER:?請設定饅頭專用 GCP_PROJECT_NUMBER}"
+: "${CLOUD_SQL_CONNECTION:?請設定饅頭專用 CLOUD_SQL_CONNECTION}"
+
+PROJECT="$GCP_PROJECT_ID"
+PROJECT_NUMBER="$GCP_PROJECT_NUMBER"
+REGION="${GCP_REGION:-asia-east1}"
+SERVICE="${CLOUD_RUN_SERVICE:-mantou-backend}"
+SQL_CONN="$CLOUD_SQL_CONNECTION"
+RUN_URL="${PUBLIC_BASE_URL:-https://${SERVICE}-${PROJECT_NUMBER}.${REGION}.run.app}"
 
 cd "$(dirname "$0")"
 
@@ -23,7 +27,7 @@ gcloud run deploy "$SERVICE" \
   --cpu=1 \
   --add-cloudsql-instances="$SQL_CONN" \
   --set-env-vars="NODE_ENV=production,PUBLIC_BASE_URL=${RUN_URL},LLM_BASE_URL=https://bridge.soul-polaroid.work,LINEPAY_SANDBOX=true" \
-  --set-secrets="DATABASE_URL=DATABASE_URL:latest,LINE_CHANNEL_TOKEN=LINE_CHANNEL_TOKEN:latest,LINE_CHANNEL_SECRET=LINE_CHANNEL_SECRET:latest,BRIDGE_SECRET=BRIDGE_SECRET:latest,JWT_SECRET=JWT_SECRET:latest,ADMIN_TOKEN=ADMIN_TOKEN:latest,CRON_SECRET=CRON_SECRET:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,MINIMAX_API_KEY=MINIMAX_API_KEY:latest,MINIMAX_GROUP_ID=MINIMAX_GROUP_ID:latest,MINIMAX_VOICE_ID=MINIMAX_VOICE_ID:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
+  --set-secrets="DATABASE_URL=mantou-database-url:latest,LINE_CHANNEL_TOKEN=mantou-line-channel-token:latest,LINE_CHANNEL_SECRET=mantou-line-channel-secret:latest,BRIDGE_SECRET=mantou-bridge-secret:latest,JWT_SECRET=mantou-jwt-secret:latest,ADMIN_TOKEN=mantou-admin-token:latest,CRON_SECRET=mantou-cron-secret:latest,ANTHROPIC_API_KEY=mantou-anthropic-api-key:latest,MINIMAX_API_KEY=mantou-minimax-api-key:latest,MINIMAX_GROUP_ID=mantou-minimax-group-id:latest,MINIMAX_VOICE_ID=mantou-minimax-voice-id:latest,GEMINI_API_KEY=mantou-gemini-api-key:latest"
 
 echo ""
 echo "== 部署完成，鑑別信號驗證 =="

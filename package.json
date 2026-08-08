@@ -1,8 +1,8 @@
 {
-  "name": "manman-platform",
+  "name": "mantou-platform",
   "private": true,
   "version": "0.1.0",
-  "description": "新生漫漫 · 商用陪伴平台（多租戶 SaaS on LINE）",
+  "description": "饅頭語氣靈 AI 平台（多租戶 SaaS on LINE）",
   "type": "module",
   "workspaces": [
     "packages/*"

@@ -4,7 +4,7 @@ import type { TenantRow } from './tenancy.js'
 /**
  * 🎭 角色註冊表（多角色最小改造 · BRIEF-FOR-ADAM §3）。
  * 角色＝一個 soul pack；記憶／計費／夜間靈魂全部 character-agnostic（掛 tenant）。
- * 平台預設角色 = 慢慢（manman）；tenants.character_id 為 NULL 的舊戶一律視為慢慢。
+ * 饅頭專用 OA 的預設角色 = 饅頭（mantou）。
  */
 
 export interface CharacterRow {
@@ -44,12 +44,12 @@ export async function getCharacterBySlug(slug: string): Promise<CharacterRow | n
 }
 
 export async function getDefaultCharacter(): Promise<CharacterRow> {
-  const manman = await getCharacterBySlug('manman')
-  if (!manman) throw new Error('characters 表缺 manman（migration 001 應已種入）')
-  return manman
+  const mantou = await getCharacterBySlug('mantou')
+  if (!mantou) throw new Error('characters 表缺 mantou（migration 003 應已種入）')
+  return mantou
 }
 
-/** tenant → 角色；舊戶（character_id NULL）視為慢慢 */
+/** tenant → 角色；未綁角色時使用此 OA 的預設饅頭 */
 export async function getCharacterForTenant(
   tenant: Pick<TenantRow, 'character_id'>,
 ): Promise<CharacterRow> {

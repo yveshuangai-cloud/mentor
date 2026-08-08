@@ -30,6 +30,8 @@ import { setLlmOverride, type LlmRequest } from '../src/modules/llm.js'
 import { extractAndLearn } from '../src/modules/memory/learner.js'
 import { runNightlyMemory } from '../src/modules/memory/nightly.js'
 import { loadMemoryBlocks } from '../src/modules/memory/recall.js'
+import { drainWebhookEvents, enqueueWebhookEvents } from '../src/modules/webhookQueue.js'
+import { settlePayment } from '../src/modules/payments/settlement.js'
 
 let passed = 0
 let failed = 0
@@ -155,7 +157,77 @@ async function main(): Promise<void> {
     `SELECT remaining FROM point_lots WHERE id = $1`,
     [before.rows[0].id],
   )
-  check('到期批次歸零並記帳', Number(afterSweep.rows[0].remaining) === 0)
+  const expiryLedger = await platformQuery<{ delta: number }>(
+    `SELECT delta FROM point_ledger WHERE tenant_id = $1 AND reason = 'expire'
+     ORDER BY created_at DESC LIMIT 1`,
+    [tenantA.id],
+  )
+  check('到期批次歸零', Number(afterSweep.rows[0].remaining) === 0)
+  check('到期帳本記歸零前數值（不是 0）', Number(expiryLedger.rows[0]?.delta) === -4)
+
+  console.log('\n— Webhook durable inbox（跨實例去重＋認領）—')
+  const queueEvent = {
+    webhookEventId: 'acceptance-webhook-1',
+    type: 'message',
+    message: { id: 'acceptance-message-1', type: 'text', text: '測試' },
+  }
+  const firstEnqueue = await enqueueWebhookEvents([queueEvent])
+  const duplicateEnqueue = await enqueueWebhookEvents([queueEvent])
+  check('首次 webhook 落 durable inbox', firstEnqueue === 1)
+  check('同 event/message 重送只留一筆', duplicateEnqueue === 0)
+  let handled = 0
+  const drains = await Promise.all([
+    drainWebhookEvents(async () => { handled++ }, () => {}, 1),
+    drainWebhookEvents(async () => { handled++ }, () => {}, 1),
+  ])
+  const queued = await platformQuery<{ status: string; attempts: number }>(
+    `SELECT status, attempts FROM line_webhook_events WHERE event_id = $1`,
+    ['line:acceptance-webhook-1'],
+  )
+  check('兩個 worker 並發只處理一次', handled === 1 && drains.reduce((n, d) => n + d.processed, 0) === 1)
+  check('處理狀態持久化為 processed', queued.rows[0]?.status === 'processed' && queued.rows[0]?.attempts === 1)
+
+  await enqueueWebhookEvents([{ webhookEventId: 'acceptance-webhook-retry', type: 'message' }])
+  const failedDrain = await drainWebhookEvents(async () => { throw new Error('transient') }, () => {}, 1)
+  const retryQueued = await platformQuery<{ status: string; attempts: number }>(
+    `SELECT status, attempts FROM line_webhook_events WHERE event_id = $1`,
+    ['line:acceptance-webhook-retry'],
+  )
+  check('處理失敗持久化為 retry', failedDrain.failed === 1 && retryQueued.rows[0]?.status === 'retry')
+  await platformQuery(
+    `UPDATE line_webhook_events SET next_attempt_at = now() - interval '1 second' WHERE event_id = $1`,
+    ['line:acceptance-webhook-retry'],
+  )
+  const recoveredDrain = await drainWebhookEvents(async () => {}, () => {}, 1)
+  const recovered = await platformQuery<{ status: string; attempts: number }>(
+    `SELECT status, attempts FROM line_webhook_events WHERE event_id = $1`,
+    ['line:acceptance-webhook-retry'],
+  )
+  check('retry 到期後可恢復並完成', recoveredDrain.processed === 1 && recovered.rows[0]?.status === 'processed' && recovered.rows[0]?.attempts === 2)
+
+  console.log('\n— 付款原子落帳＋冪等 —')
+  const balanceBeforePay = await getBalance(tenantA.id)
+  await platformQuery(
+    `INSERT INTO payments (tenant_id, provider, order_id, amount_twd, points, status)
+     VALUES ($1, 'linepay', 'MMP-acceptance-idempotent', 30, 50, 'pending')`,
+    [tenantA.id],
+  )
+  const settlements = await Promise.all([
+    settlePayment('MMP-acceptance-idempotent', { ok: true, raw: { returnCode: '0000' }, providerTxn: 'txn-1' }),
+    settlePayment('MMP-acceptance-idempotent', { ok: true, raw: { returnCode: '0000' }, providerTxn: 'txn-1' }),
+  ])
+  const paymentLots = await platformQuery<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM point_lots l JOIN payments p ON p.id = l.payment_id
+     WHERE p.order_id = 'MMP-acceptance-idempotent'`,
+  )
+  const paymentLedger = await platformQuery<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM point_ledger
+     WHERE ref_type = 'payment' AND ref_id = 'MMP-acceptance-idempotent'`,
+  )
+  check('兩個 confirm 都得到成功冪等結果', settlements.every((s) => s.ok))
+  check('並發 confirm 只建立一個點數批次', Number(paymentLots.rows[0].count) === 1)
+  check('並發 confirm 只建立一筆入點帳本', Number(paymentLedger.rows[0].count) === 1)
+  check('付款只增加一次 50 點', (await getBalance(tenantA.id)) === balanceBeforePay + 50)
 
   // 點數不足
   const poorUser = await upsertUser('Utest-tenant-poor', { displayName: '測試阿窮' })
@@ -575,9 +647,9 @@ async function main(): Promise<void> {
   }
   check('同角色重複開戶被唯一索引擋下', dupBlocked)
 
-  // 路由：預設（慢慢）回慢慢戶；指定快快回快快戶
+  // 路由：預設（饅頭）回饅頭戶；指定快快回快快戶
   const memDefault = await resolveMembership(userA.id)
-  check('resolveMembership 預設回慢慢戶（單角色行為不變）', memDefault?.tenant.id === tenantA.id)
+  check('resolveMembership 預設回饅頭戶', memDefault?.tenant.id === tenantA.id)
   const memKK = await resolveMembership(userA.id, kuaikuaiId)
   check('resolveMembership 指定角色回快快戶', memKK?.tenant.id === tenantK.id)
 
@@ -592,7 +664,7 @@ async function main(): Promise<void> {
   check('快快誕生（含 pack 的 tagline）', tenantK.status === 'active' && kkBorn.texts.join('').includes('快快都接得住'))
   const charK = await getCharacterForTenant(tenantK)
   const charA2 = await getCharacterForTenant(tenantA)
-  check('角色解析：兩戶各自的角色', charK.slug === 'kuaikuai' && charA2.slug === 'manman')
+  check('角色解析：兩戶各自的角色', charK.slug === 'kuaikuai' && charA2.slug === 'mantou')
 
   // 兩戶記憶零串門（同一個人、兩個角色）
   const dbK = forTenant(tenantK.id)
@@ -603,7 +675,7 @@ async function main(): Promise<void> {
   const aConvs = await dbA.query<{ user_message: string }>(
     `SELECT user_message FROM conversations WHERE tenant_id = $1`,
   )
-  check('慢慢戶撈不到快快戶的對話（同人跨角色零串門）', !aConvs.rows.some((r) => r.user_message?.includes('秘密')))
+  check('饅頭戶撈不到快快戶的對話（同人跨角色零串門）', !aConvs.rows.some((r) => r.user_message?.includes('秘密')))
 
   console.log(`\n═══ 驗收結果：${passed} 過 / ${failed} 敗 ═══`)
   await pool.end()

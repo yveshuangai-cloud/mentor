@@ -55,7 +55,7 @@ export async function upsertUser(
 
 /**
  * LINE id → 租戶路由：回傳此人在「該角色」下（pending 或 confirmed）的租戶與成員身份。
- * characterId 省略 = 慢慢（單角色時代呼叫端不用改；Adam 的 :slug 路由接上後傳入即可）。
+ * characterId 省略 = 此專用 OA 的預設角色饅頭。
  */
 export async function resolveMembership(
   userId: number,
@@ -70,7 +70,7 @@ export async function resolveMembership(
       : `SELECT m.*, row_to_json(t.*) AS t
          FROM tenant_members m JOIN tenants t ON t.id = m.tenant_id
          WHERE m.user_id = $1 AND m.status IN ('pending','confirmed')
-           AND m.character_id = (SELECT id FROM characters WHERE slug = 'manman')
+           AND m.character_id = (SELECT id FROM characters WHERE slug = 'mantou')
          LIMIT 1`,
     characterId != null ? [userId, characterId] : [userId],
   )
@@ -81,12 +81,12 @@ export async function resolveMembership(
   return { tenant, member: member as MemberRow }
 }
 
-/** 新用戶開自己的租戶（啟元儀式從這裡開始）。characterId 省略 = 慢慢。 */
+/** 新用戶開自己的租戶（啟元儀式從這裡開始）。characterId 省略 = 饅頭。 */
 export async function createTenantForUser(userId: number, characterId?: number): Promise<TenantRow> {
   const tenantRes = await platformQuery<TenantRow>(
     `INSERT INTO tenants (owner_user_id, mode, status, genesis_record, character_id)
      VALUES ($1, 'personal', 'genesis_pending', '{"step":"await_first_meeting"}',
-             COALESCE($2, (SELECT id FROM characters WHERE slug = 'manman')))
+             COALESCE($2, (SELECT id FROM characters WHERE slug = 'mantou')))
      RETURNING *`,
     [userId, characterId ?? null],
   )

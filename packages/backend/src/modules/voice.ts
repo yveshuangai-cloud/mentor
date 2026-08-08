@@ -117,7 +117,7 @@ export async function m4aToMp3(m4a: Buffer): Promise<Buffer> {
 
 // ── GCS 上傳（ADC via metadata server，天條：不注入 SA JSON）────
 
-const VOICE_BUCKET = 'manman-voice-2026'
+const VOICE_BUCKET = process.env.VOICE_BUCKET ?? 'mantou-voice-2026'
 
 async function adcToken(): Promise<string> {
   const res = await fetch(

@@ -9,10 +9,10 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const dataDir = mkdtempSync(join(tmpdir(), 'manman-acceptance-pg-'))
+const dataDir = mkdtempSync(join(tmpdir(), 'mantou-acceptance-pg-'))
 const pg = new EmbeddedPostgres({
   databaseDir: dataDir,
-  user: 'manman',
+  user: 'mantou',
   password: 'acceptance',
   port: 55432,
   persistent: false,
@@ -22,11 +22,11 @@ async function main(): Promise<void> {
   console.log('— 啟動拋棄式 PostgreSQL（embedded）—')
   await pg.initialise()
   await pg.start()
-  await pg.createDatabase('manman_acceptance')
+  await pg.createDatabase('mantou_acceptance')
 
   const env = {
     ...process.env,
-    DATABASE_URL: 'postgres://manman:acceptance@localhost:55432/manman_acceptance',
+    DATABASE_URL: 'postgres://mantou:acceptance@localhost:55432/mantou_acceptance',
   }
   const backendDir = join(dirname(fileURLToPath(import.meta.url)), '..')
   const tsxCli = join(backendDir, '../../node_modules/tsx/dist/cli.mjs') // workspaces 提升到根

@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const dataDir = mkdtempSync(join(tmpdir(), 'manman-smoke-pg-'))
-const pg = new EmbeddedPostgres({ databaseDir: dataDir, user: 'manman', password: 'smoke', port: 55433, persistent: false })
+const dataDir = mkdtempSync(join(tmpdir(), 'mantou-smoke-pg-'))
+const pg = new EmbeddedPostgres({ databaseDir: dataDir, user: 'mantou', password: 'smoke', port: 55433, persistent: false })
 
 async function main(): Promise<void> {
   await pg.initialise()
@@ -20,7 +20,7 @@ async function main(): Promise<void> {
     cwd: backendDir,
     env: {
       ...process.env,
-      DATABASE_URL: 'postgres://manman:smoke@localhost:55433/manman_smoke',
+      DATABASE_URL: 'postgres://mantou:smoke@localhost:55433/mantou_smoke',
       PORT: '3777',
       ADMIN_TOKEN: 'smoke-token',
     },
@@ -48,7 +48,7 @@ async function main(): Promise<void> {
   if (up) {
     const admin = await fetch('http://localhost:3777/admin')
     const html = await admin.text()
-    check('/admin 回 UI（200 + 標題）', admin.ok && html.includes('漫漫平台'))
+    check('/admin 回 UI（200 + 標題）', admin.ok && html.includes('饅頭平台'))
     const noAuth = await fetch('http://localhost:3777/api/admin/point-rules')
     check('admin API 無 token → 401', noAuth.status === 401)
     const withAuth = await fetch('http://localhost:3777/api/admin/point-rules', {
@@ -58,6 +58,8 @@ async function main(): Promise<void> {
     check('admin API 帶 token → 規則表（含 seed 六閘道）', withAuth.ok && rules.rules.length >= 6)
     const cronNoAuth = await fetch('http://localhost:3777/api/cron/nightly-memory', { method: 'POST' })
     check('cron route 無 secret → 401', cronNoAuth.status === 401)
+    const webhookCronNoAuth = await fetch('http://localhost:3777/api/cron/process-webhooks', { method: 'POST' })
+    check('webhook 補處理 cron 無 secret → 401', webhookCronNoAuth.status === 401)
   }
 
   child.kill()

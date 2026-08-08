@@ -1,8 +1,8 @@
 {
-  "name": "@manman/liff",
+  "name": "@mantou/liff",
   "version": "1.0.0",
   "private": true,
-  "description": "包小容語音通話 LIFF App",
+  "description": "饅頭語音通話 LIFF App",
   "type": "module",
   "scripts": {
     "dev": "vite",
