@@ -12,6 +12,12 @@ import { buildReadingBlock } from './proactive/reading.js'
 import { getCharacterForTenant } from './characters.js'
 import { CONVERSATION_STYLE_PROMPT } from './conversationStyle.js'
 import { AUTHORIZED_UPGRADE_PROMPT } from './upgrades.js'
+import {
+  formatSearchContext,
+  searchWeb,
+  shouldUseWebSearch,
+  type WebSearchSource,
+} from './webSearch.js'
 import type { TenantRow, MemberRow, UserRow } from './tenancy.js'
 
 /**
@@ -37,6 +43,7 @@ export interface BrainInput {
 
 export interface BrainOutput {
   reply: string
+  webSearchUsed: boolean
 }
 
 const HISTORY_LIMIT = 20
@@ -69,6 +76,20 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
   ])
 
   const familyBridge = tenant.mode === 'family' ? await loadFamilyBridge(character.slug) : ''
+  let webSearchUsed = false
+  let webSearchBlock = ''
+  let webSearchSources: WebSearchSource[] = []
+  if (shouldUseWebSearch(message)) {
+    try {
+      const searchResult = await searchWeb(message)
+      webSearchBlock = formatSearchContext(message, searchResult)
+      webSearchSources = searchResult.sources
+      webSearchUsed = true
+    } catch (error) {
+      console.error('[web-search] failed:', (error as Error).message)
+      webSearchBlock = '# 網路搜尋狀態\n這次即時搜尋失敗。請誠實告知對方目前無法完成查證，不得假裝已搜尋。'
+    }
+  }
   const system = [
     soul.preBiography,
     `# 我的傳記（只屬於這一戶，絕無別人的）\n\n${biography}`,
@@ -78,6 +99,7 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     semanticBlock,
     promisesBlock,
     readingBlock,
+    webSearchBlock,
     nightSoul,
     truthCorrection,
     soul.postBiography,
@@ -117,6 +139,7 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
       reply: attachment
         ? '我看到你傳來的東西了……但我看圖的眼睛還沒接上（需要設定 ANTHROPIC_API_KEY）。'
         : '嗯，我聽到了。（我的腦還沒接上——請先設定 BRIDGE_SECRET 或 ANTHROPIC_API_KEY）',
+      webSearchUsed,
     }
   }
 
@@ -203,8 +226,18 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     output_tokens: outputTokens,
   }).catch(() => {})
 
+  let visibleReply = stripVoiceMarkers(reply)
+  if (webSearchUsed && webSearchSources.length) {
+    const sources = webSearchSources
+      .filter((source) => !visibleReply.includes(source.url))
+      .slice(0, 3)
+    if (sources.length) {
+      visibleReply += `\n\n查證來源：\n${sources.map((source) => `${source.title} ${source.url}`).join('\n')}`
+    }
+  }
   return {
-    reply: stripVoiceMarkers(reply) || '我有收到你剛才說的話。這一輪我沒有整理好回覆，請再給我一次，我會接著回答。',
+    reply: visibleReply || '我有收到你剛才說的話。這一輪我沒有整理好回覆，請再給我一次，我會接著回答。',
+    webSearchUsed,
   }
 }
 

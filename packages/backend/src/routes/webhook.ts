@@ -238,6 +238,15 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
   }
 
   const output = await processMessage({ tenant, user, member, message: text })
+  if (output.webSearchUsed) {
+    const searchCharge = await chargeGate(tenant.id, 'web_search', { refType: 'conversation' })
+    charge = {
+      cost: charge.cost + searchCharge.cost,
+      balance: searchCharge.balance,
+      charged: charge.charged || searchCharge.charged,
+      gate: 'text+web_search',
+    }
+  }
 
   // 動作標籤執行端（約定/排程；病根紀律：標籤才算真的做了）→ 剝標籤後才進遞送
   const actions = await applyActionTags(tenant.id, user.id, output.reply, text, user.can_shape_soul)
@@ -424,6 +433,15 @@ async function handleAudioEvent(app: FastifyInstance, event: LineEvent): Promise
     member,
     message: `（他用聲音跟我說）${transcript}`,
   })
+  if (output.webSearchUsed) {
+    const searchCharge = await chargeGate(tenant.id, 'web_search', { refType: 'conversation' })
+    charge = {
+      cost: charge.cost + searchCharge.cost,
+      balance: searchCharge.balance,
+      charged: charge.charged || searchCharge.charged,
+      gate: 'text+web_search',
+    }
+  }
   const actions = await applyActionTags(
     tenant.id,
     user.id,

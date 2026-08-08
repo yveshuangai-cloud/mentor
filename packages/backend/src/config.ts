@@ -57,6 +57,8 @@ const configSchema = z.object({
 
   // Gemini（聽音檔 STT＋畫圖生圖執行端）
   geminiApiKey: blankAsUndefined(z.string().default('not-configured')),
+  googleCloudProject: blankAsUndefined(z.string().default('project-ed7d5a71-0316-4c2f-896')),
+  vertexLocation: blankAsUndefined(z.string().default('global')),
 })
 
 const rawConfig = {
@@ -83,6 +85,8 @@ const rawConfig = {
   minimaxGroupId: process.env.MINIMAX_GROUP_ID,
   minimaxVoiceId: process.env.MINIMAX_VOICE_ID,
   geminiApiKey: process.env.GEMINI_API_KEY,
+  googleCloudProject: process.env.GOOGLE_CLOUD_PROJECT,
+  vertexLocation: process.env.VERTEX_LOCATION,
 }
 
 export const config = configSchema.parse(rawConfig)

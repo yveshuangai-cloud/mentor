@@ -36,6 +36,7 @@ const SKILL_FILES = [
   'skills/image-creation.md',
   'skills/reading-together.md',
   'skills/voice-clips.md',
+  'skills/web-search.md',
 ]
 
 const cache = new Map<string, string>() // key: `${slug}:${rel}`
