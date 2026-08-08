@@ -97,7 +97,7 @@ export async function runProactiveCare(
         ? nowMs - new Date(lastConvR.rows[0].created_at).getTime()
         : Infinity
 
-      if (hour >= 8 && hour < 10) {
+      if (config.enableNightSoul && hour >= 8 && hour < 10) {
         // 早上：夢種子還新鮮（昨天/今天的夢）且對方昨天有聊過（不對久未出現的人套近乎）
         const dreamR = await db.query<{ tomorrow_seeds: unknown }>(
           `SELECT tomorrow_seeds FROM dreams

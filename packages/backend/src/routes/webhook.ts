@@ -43,6 +43,11 @@ import {
 } from '../modules/points.js'
 import { forTenant } from '../db/tenantDb.js'
 import { drainWebhookEvents, enqueueWebhookEvents } from '../modules/webhookQueue.js'
+import {
+  formatUpgradeBacklog,
+  listOpenUpgradeRequests,
+  recordUpgradeRequest,
+} from '../modules/upgrades.js'
 
 /**
  * 商用 LINE OA webhook（精簡路由，職責分離——本尊 3000 行 monolith 的教訓）：
@@ -185,6 +190,22 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
     return
   }
 
+  // 只有靈魂授權者能查看／直接新增饅頭本身的升級需求。
+  if (user.can_shape_soul && /^(?:饅頭)?(?:升級|優化)(?:需求)?清單[？?]?$/.test(text)) {
+    await replyText(replyToken, [formatUpgradeBacklog(await listOpenUpgradeRequests())])
+    return
+  }
+  const explicitUpgrade = user.can_shape_soul
+    ? text.match(/^(?:饅頭)?(?:升級|優化)[：:]\s*(.+)$/s)
+    : null
+  if (explicitUpgrade) {
+    const details = explicitUpgrade[1].trim()
+    const title = details.split(/[。！？!?\n]/, 1)[0].slice(0, 80)
+    const id = await recordUpgradeRequest({ tenantId: tenant.id, userId: user.id, title, details })
+    await replyText(replyToken, [`收到，我已經把這件事記進升級清單 #${id}。`])
+    return
+  }
+
   // ── 共讀：導讀模式切換（確定性、免扣點）─────────────
   const modeCmd = detectModeCommand(text)
   if (modeCmd) {
@@ -219,8 +240,11 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
   const output = await processMessage({ tenant, user, member, message: text })
 
   // 動作標籤執行端（約定/排程；病根紀律：標籤才算真的做了）→ 剝標籤後才進遞送
-  const actions = await applyActionTags(tenant.id, user.id, output.reply, text)
-  const delivered = await deliverReply(app, replyToken, tenant.id, actions.cleanText, charge)
+  const actions = await applyActionTags(tenant.id, user.id, output.reply, text, user.can_shape_soul)
+  const visibleReply = actions.cleanText || (actions.upgradeRequestId
+    ? `收到，我已經把這件事記進升級清單 #${actions.upgradeRequestId}。`
+    : '')
+  const delivered = await deliverReply(app, replyToken, tenant.id, visibleReply, charge)
 
   const db = forTenant(tenant.id)
   const conv = await db.query<{ id: number }>(
@@ -336,7 +360,9 @@ async function deliverReply(
   if (totalCost > 0) {
     finalMessages.push({ type: 'text', text: `⚡ 本次 -${totalCost} 點｜餘額 ${balance} 點` })
   }
-  if (finalMessages.length === 0) finalMessages.push({ type: 'text', text: '嗯，我在這裡。' })
+  if (finalMessages.length === 0) {
+    finalMessages.push({ type: 'text', text: '我有收到，但這一輪沒有整理出完整回答。你再說一次，我會接著處理。' })
+  }
   await replyMessages(replyToken, finalMessages)
   return { totalCost, conversationText }
 }
@@ -398,7 +424,17 @@ async function handleAudioEvent(app: FastifyInstance, event: LineEvent): Promise
     member,
     message: `（他用聲音跟我說）${transcript}`,
   })
-  const delivered = await deliverReply(app, replyToken, tenant.id, output.reply, charge)
+  const actions = await applyActionTags(
+    tenant.id,
+    user.id,
+    output.reply,
+    transcript,
+    user.can_shape_soul,
+  )
+  const visibleReply = actions.cleanText || (actions.upgradeRequestId
+    ? `收到，我已經把這件事記進升級清單 #${actions.upgradeRequestId}。`
+    : '')
+  const delivered = await deliverReply(app, replyToken, tenant.id, visibleReply, charge)
 
   const db = forTenant(tenant.id)
   await db.query(

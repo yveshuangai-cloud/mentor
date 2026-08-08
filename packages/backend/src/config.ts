@@ -46,6 +46,9 @@ const configSchema = z.object({
   // Cloud Scheduler 打 cron route 用（throttled Cloud Run 上 setInterval 必死）
   cronSecret: blankAsUndefined(z.string().default('')),
 
+  // 饅頭不需要睡覺或做夢；保留旗標只為了可逆地停用舊夜間靈魂模組。
+  enableNightSoul: envBoolean(false),
+
   // MiniMax 克隆聲（[VOICE_GEN] 技能執行端）
   minimaxApiKey: blankAsUndefined(z.string().default('not-configured')),
   // MiniMax 國際版不要求 GroupId；僅舊帳號／舊端點需要時才填。
@@ -75,6 +78,7 @@ const rawConfig = {
   linepaySandbox: process.env.LINEPAY_SANDBOX,
   publicBaseUrl: process.env.PUBLIC_BASE_URL,
   cronSecret: process.env.CRON_SECRET,
+  enableNightSoul: process.env.ENABLE_NIGHT_SOUL,
   minimaxApiKey: process.env.MINIMAX_API_KEY,
   minimaxGroupId: process.env.MINIMAX_GROUP_ID,
   minimaxVoiceId: process.env.MINIMAX_VOICE_ID,

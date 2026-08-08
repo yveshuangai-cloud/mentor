@@ -12,6 +12,11 @@ import {
 } from './promises.js'
 import { recordActionOutcome } from '../mirror.js'
 import { parseNoteTag, stripNoteTag, saveReadingNote } from './reading.js'
+import {
+  parseUpgradeRequestTag,
+  recordUpgradeRequest,
+  stripUpgradeRequestTags,
+} from '../upgrades.js'
 
 /**
  * 回覆的「動作標籤」執行端（病根紀律：標籤才算做了，嘴巴說不算）。
@@ -26,6 +31,7 @@ export interface ActionTagResult {
   promiseCancelled: number
   scheduleCreated: boolean
   noteSaved: boolean
+  upgradeRequestId: number | null
 }
 
 /** [SCHEDULE title="..." start="YYYY-MM-DDTHH:mm" end="..." location="..." people="..." repeat="daily|weekly|monthly|yearly" count="N"] */
@@ -64,14 +70,27 @@ export async function applyActionTags(
   userId: number,
   reply: string,
   userMessage: string,
+  canShapeSoul = false,
 ): Promise<ActionTagResult> {
   const result: ActionTagResult = {
-    cleanText: stripActionTags(stripNoteTag(reply)),
+    cleanText: stripUpgradeRequestTags(stripActionTags(stripNoteTag(reply))),
     promiseCreated: false,
     promiseUpdated: 0,
     promiseCancelled: 0,
     scheduleCreated: false,
     noteSaved: false,
+    upgradeRequestId: null,
+  }
+
+  const upgrade = parseUpgradeRequestTag(reply)
+  if (canShapeSoul && upgrade) {
+    result.upgradeRequestId = await recordUpgradeRequest({
+      tenantId,
+      userId,
+      title: upgrade.title,
+      details: upgrade.details,
+      source: 'line_action_tag',
+    })
   }
 
   // 共讀筆記：[NOTE]...[/NOTE] → 入庫＋進度推進（她嘴上說「記下來囉」不算，標籤才算）

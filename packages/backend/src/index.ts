@@ -51,7 +51,9 @@ async function bootstrap(): Promise<void> {
       return reply.code(401).send({ error: 'unauthorized' })
     }
     const memory = await runNightlyMemory(log)
-    const soul = await runNightlySoul(log) // 日記→夢（記憶整理後，她才帶著整理過的默契入睡）
+    const soul = config.enableNightSoul
+      ? await runNightlySoul(log)
+      : { diaries: 0, dreams: 0 }
     const reflections = await nightlyHonestyReflection(log) // 誠實自省（隔天早上帶出）
     return { ok: true, ...memory, ...soul, reflections }
   })
