@@ -9,15 +9,30 @@ const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
 
 interface GeminiPart {
   text?: string
+  thought?: boolean
   inlineData?: { mimeType: string; data: string }
   inline_data?: { mime_type: string; data: string }
 }
 
-async function geminiCall(model: string, parts: unknown[]): Promise<GeminiPart[]> {
-  const res = await fetch(`${GEMINI_BASE}/${model}:generateContent?key=${config.geminiApiKey}`, {
+interface GeminiGenerationConfig {
+  thinkingConfig?: { thinkingLevel: 'minimal' | 'low' | 'medium' | 'high' }
+}
+
+async function geminiCall(
+  model: string,
+  parts: unknown[],
+  generationConfig?: GeminiGenerationConfig,
+): Promise<GeminiPart[]> {
+  const res = await fetch(`${GEMINI_BASE}/${model}:generateContent`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts }] }),
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': config.geminiApiKey,
+    },
+    body: JSON.stringify({
+      contents: [{ parts }],
+      ...(generationConfig ? { generationConfig } : {}),
+    }),
   })
   if (!res.ok) throw new Error(`Gemini ${model} HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
   const data = (await res.json()) as {
@@ -28,11 +43,19 @@ async function geminiCall(model: string, parts: unknown[]): Promise<GeminiPart[]
 
 /** 語音轉文字（mp3/aac 皆可） */
 export async function transcribeAudio(audio: Buffer, mimeType: string): Promise<string> {
-  const parts = await geminiCall('gemini-2.5-flash', [
-    { inline_data: { mime_type: mimeType, data: audio.toString('base64') } },
-    { text: '逐字轉錄這段音檔的內容（繁體中文），只回轉錄文字，不加任何說明。' },
-  ])
-  const text = parts.map((p) => p.text ?? '').join('').trim()
+  const parts = await geminiCall(
+    'gemini-3.6-flash',
+    [
+      { inline_data: { mime_type: mimeType, data: audio.toString('base64') } },
+      { text: '逐字轉錄這段音檔的內容（繁體中文），只回轉錄文字，不加任何說明。' },
+    ],
+    { thinkingConfig: { thinkingLevel: 'minimal' } },
+  )
+  const text = parts
+    .filter((p) => !p.thought)
+    .map((p) => p.text ?? '')
+    .join('')
+    .trim()
   if (!text) throw new Error('Gemini STT 回空')
   return text
 }
