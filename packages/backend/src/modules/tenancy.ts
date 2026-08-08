@@ -23,6 +23,7 @@ export interface TenantRow {
   genesis_at: Date | null
   genesis_record: Record<string, unknown> | null
   invite_code: string | null
+  character_id: number | null // NULL = 慢慢（舊戶相容）
 }
 
 export interface MemberRow {
@@ -52,16 +53,26 @@ export async function upsertUser(
   return res.rows[0]
 }
 
-/** LINE id → 租戶路由：回傳此人所屬（pending 或 confirmed）的租戶與成員身份 */
+/**
+ * LINE id → 租戶路由：回傳此人在「該角色」下（pending 或 confirmed）的租戶與成員身份。
+ * characterId 省略 = 慢慢（單角色時代呼叫端不用改；Adam 的 :slug 路由接上後傳入即可）。
+ */
 export async function resolveMembership(
   userId: number,
+  characterId?: number,
 ): Promise<{ tenant: TenantRow; member: MemberRow } | null> {
   const res = await platformQuery<MemberRow & { t: string }>(
-    `SELECT m.*, row_to_json(t.*) AS t
-     FROM tenant_members m JOIN tenants t ON t.id = m.tenant_id
-     WHERE m.user_id = $1 AND m.status IN ('pending','confirmed')
-     LIMIT 1`,
-    [userId],
+    characterId != null
+      ? `SELECT m.*, row_to_json(t.*) AS t
+         FROM tenant_members m JOIN tenants t ON t.id = m.tenant_id
+         WHERE m.user_id = $1 AND m.status IN ('pending','confirmed') AND m.character_id = $2
+         LIMIT 1`
+      : `SELECT m.*, row_to_json(t.*) AS t
+         FROM tenant_members m JOIN tenants t ON t.id = m.tenant_id
+         WHERE m.user_id = $1 AND m.status IN ('pending','confirmed')
+           AND m.character_id = (SELECT id FROM characters WHERE slug = 'manman')
+         LIMIT 1`,
+    characterId != null ? [userId, characterId] : [userId],
   )
   if (!res.rowCount) return null
   const row = res.rows[0]
@@ -70,19 +81,20 @@ export async function resolveMembership(
   return { tenant, member: member as MemberRow }
 }
 
-/** 新用戶開自己的租戶（啟元儀式從這裡開始） */
-export async function createTenantForUser(userId: number): Promise<TenantRow> {
+/** 新用戶開自己的租戶（啟元儀式從這裡開始）。characterId 省略 = 慢慢。 */
+export async function createTenantForUser(userId: number, characterId?: number): Promise<TenantRow> {
   const tenantRes = await platformQuery<TenantRow>(
-    `INSERT INTO tenants (owner_user_id, mode, status, genesis_record)
-     VALUES ($1, 'personal', 'genesis_pending', '{"step":"await_first_meeting"}')
+    `INSERT INTO tenants (owner_user_id, mode, status, genesis_record, character_id)
+     VALUES ($1, 'personal', 'genesis_pending', '{"step":"await_first_meeting"}',
+             COALESCE($2, (SELECT id FROM characters WHERE slug = 'manman')))
      RETURNING *`,
-    [userId],
+    [userId, characterId ?? null],
   )
   const tenant = tenantRes.rows[0]
   await platformQuery(
-    `INSERT INTO tenant_members (tenant_id, user_id, role, status, confirmed_by, confirmed_at)
-     VALUES ($1, $2, 'owner', 'confirmed', $2, now())`,
-    [tenant.id, userId],
+    `INSERT INTO tenant_members (tenant_id, user_id, role, status, confirmed_by, confirmed_at, character_id)
+     VALUES ($1, $2, 'owner', 'confirmed', $2, now(), $3)`,
+    [tenant.id, userId, tenant.character_id],
   )
   return tenant
 }
@@ -110,10 +122,10 @@ export async function joinByInviteCode(
   if (!tenantRes.rowCount) return null
   const tenant = tenantRes.rows[0]
   await platformQuery(
-    `INSERT INTO tenant_members (tenant_id, user_id, role, status)
-     VALUES ($1, $2, 'member', 'pending')
+    `INSERT INTO tenant_members (tenant_id, user_id, role, status, character_id)
+     VALUES ($1, $2, 'member', 'pending', $3)
      ON CONFLICT (tenant_id, user_id) DO NOTHING`,
-    [tenant.id, user.id],
+    [tenant.id, user.id, tenant.character_id],
   )
   const ownerRes = await platformQuery<{ line_user_id: string }>(
     `SELECT line_user_id FROM users WHERE id = $1`,

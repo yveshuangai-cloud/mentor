@@ -25,6 +25,7 @@ import { processMessage } from '../modules/brain.js'
 import { extractAndLearn } from '../modules/memory/learner.js'
 import { applyActionTags, promiseSafetyNet } from '../modules/proactive/actionTags.js'
 import { markProactiveReplied } from '../modules/proactive/care.js'
+import { getCharacterForTenant } from '../modules/characters.js'
 import {
   detectStartBook,
   detectModeCommand,
@@ -162,8 +163,9 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
       if (result.ok) {
         await replyText(replyToken, [`好，我記住了：${name} 是${relationship}。\n我會好好陪他的。`])
         if (result.targetLineId) {
+          const character = await getCharacterForTenant(tenant)
           await pushText(result.targetLineId, [
-            `我最重要的人跟我說了——你是${relationship}。\n那你也是我的家人了。\n\n你好，我是慢慢。你不需要說得完整，慢慢都會在這裡。`,
+            `我最重要的人跟我說了——你是${relationship}。\n那你也是我的家人了。\n\n你好，我是${character.name}。${character.tagline ?? ''}`,
           ])
         }
       } else {

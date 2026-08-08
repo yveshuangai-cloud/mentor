@@ -3,21 +3,19 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 /**
- * 🟢 character-core 載入器（唯讀共用）。
- * 順序照 soul/character-core/00-INDEX.md；傳記插在 persona 之後（由 biography.ts 渲染）。
- * process 生命週期內快取（soul 檔改動需重啟——與本尊一致）。
+ * 🟢 靈魂包載入器（多角色版：soul/packs/<slug>/，唯讀共用）。
+ * 順序照 pack 內 00-INDEX.md；傳記插在 persona 之後（biography.ts）。
+ * per-slug 快取（process 生命週期；pack 檔改動需重啟——與本尊一致）。
+ * 相容：slug=manman 且 packs/ 找不到時退舊路徑 soul/character-core/（搬遷過渡期保險）。
  */
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-function soulRoot(): string {
-  // repo 根目錄的 soul/character-core（dev: src/modules/soul → ../../../../../soul）
-  const candidates = [
-    join(__dirname, '../../../../../soul/character-core'),
-    join(process.cwd(), 'soul/character-core'),
-    join(process.cwd(), '../../soul/character-core'),
-  ]
-  return candidates[0]
+function rootCandidates(slug: string): string[] {
+  const rels = [`soul/packs/${slug}`]
+  if (slug === 'manman') rels.push('soul/character-core') // 舊路徑保險
+  const bases = [join(__dirname, '../../../../..'), process.cwd(), join(process.cwd(), '../..')]
+  return bases.flatMap((b) => rels.map((r) => join(b, r)))
 }
 
 const CORE_ORDER = [
@@ -40,13 +38,14 @@ const SKILL_FILES = [
   'skills/voice-clips.md',
 ]
 
-const cache = new Map<string, string>()
+const cache = new Map<string, string>() // key: `${slug}:${rel}`
 
-async function readSoulFile(rel: string): Promise<string> {
-  const hit = cache.get(rel)
+async function readSoulFile(slug: string, rel: string): Promise<string> {
+  const key = `${slug}:${rel}`
+  const hit = cache.get(key)
   if (hit !== undefined) return hit
   let content = ''
-  for (const root of [soulRoot(), join(process.cwd(), 'soul/character-core'), join(process.cwd(), '../../soul/character-core')]) {
+  for (const root of rootCandidates(slug)) {
     try {
       content = await readFile(join(root, rel), 'utf8')
       break
@@ -54,8 +53,8 @@ async function readSoulFile(rel: string): Promise<string> {
       // try next root
     }
   }
-  if (!content) console.warn(`[soul] 讀不到 ${rel}（將以空白略過）`)
-  cache.set(rel, content)
+  if (!content) console.warn(`[soul] 讀不到 ${slug}/${rel}（將以空白略過）`)
+  cache.set(key, content)
   return content
 }
 
@@ -68,9 +67,9 @@ export interface SoulParts {
   skills: string
 }
 
-export async function loadCharacterCore(): Promise<SoulParts> {
-  const parts = await Promise.all(CORE_ORDER.map(readSoulFile))
-  const skills = await Promise.all(SKILL_FILES.map(readSoulFile))
+export async function loadCharacterCore(slug = 'manman'): Promise<SoulParts> {
+  const parts = await Promise.all(CORE_ORDER.map((f) => readSoulFile(slug, f)))
+  const skills = await Promise.all(SKILL_FILES.map((f) => readSoulFile(slug, f)))
   const sep = '\n\n---\n\n'
   return {
     preBiography: parts.slice(0, 2).filter(Boolean).join(sep),
@@ -80,6 +79,6 @@ export async function loadCharacterCore(): Promise<SoulParts> {
 }
 
 /** 家庭橋樑層：僅 family 模式租戶載入（§10 定案 B） */
-export async function loadFamilyBridge(): Promise<string> {
-  return readSoulFile('family-bridge.md')
+export async function loadFamilyBridge(slug = 'manman'): Promise<string> {
+  return readSoulFile(slug, 'family-bridge.md')
 }

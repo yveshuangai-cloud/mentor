@@ -18,7 +18,20 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 租戶：一戶 = 一個「新生漫漫」
+-- 角色註冊表（多角色：角色＝一個 soul pack；秘密不進 DB，token 走 env 命名約定 LINE_TOKEN__<SLUG>）
+CREATE TABLE IF NOT EXISTS characters (
+  id            BIGSERIAL PRIMARY KEY,
+  slug          TEXT NOT NULL UNIQUE,
+  name          TEXT NOT NULL,
+  tagline       TEXT,
+  soul_pack     TEXT NOT NULL,          -- soul/packs/<slug>
+  voice_id      TEXT,
+  avatar_prompt TEXT,
+  status        TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','draft','retired')),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 租戶：一戶 = 一個「新生角色」（預設慢慢；NULL 視為慢慢——舊戶相容）
 CREATE TABLE IF NOT EXISTS tenants (
   id              BIGSERIAL PRIMARY KEY,
   owner_user_id   BIGINT REFERENCES users(id),
@@ -29,6 +42,7 @@ CREATE TABLE IF NOT EXISTS tenants (
   genesis_record  JSONB,          -- {step, owner_name, owner_address, owner_gave_me, genesis_moment, birth_time_note}
   -- 家庭邀請碼（主人向漫漫要，給家人輸入後成為 pending 成員）
   invite_code     TEXT UNIQUE,
+  character_id    BIGINT REFERENCES characters(id),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -44,12 +58,13 @@ CREATE TABLE IF NOT EXISTS tenant_members (
   status             TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','confirmed','rejected','removed')),
   confirmed_by       BIGINT REFERENCES users(id),
   confirmed_at       TIMESTAMPTZ,
+  character_id       BIGINT,            -- 冗餘跟著 tenant 走（唯一索引用；建 membership 時由程式帶入）
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (tenant_id, user_id)
 );
--- 路由鐵則：一個 LINE 帳號同時最多屬於一個活躍租戶（LINE id → 租戶路由唯一）
-CREATE UNIQUE INDEX IF NOT EXISTS tenant_members_one_active
-  ON tenant_members (user_id) WHERE status IN ('pending','confirmed');
+-- 路由鐵則：一個 LINE 帳號在「同一個角色」下最多屬於一個活躍租戶（可同時養慢慢+快快＝兩戶）
+CREATE UNIQUE INDEX IF NOT EXISTS tenant_members_one_active_per_character
+  ON tenant_members (user_id, character_id) WHERE status IN ('pending','confirmed');
 CREATE INDEX IF NOT EXISTS tenant_members_by_tenant ON tenant_members (tenant_id, status);
 
 -- 活的扣點設定表（平台層：規則全租戶共用，後台可即時調）

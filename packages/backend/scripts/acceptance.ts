@@ -12,6 +12,7 @@ import {
   ensureInviteCode,
   joinByInviteCode,
   confirmMember,
+  resolveMembership,
 } from '../src/modules/tenancy.js'
 import type { TenantRow } from '../src/modules/tenancy.js'
 import { stepGenesis } from '../src/modules/genesis.js'
@@ -549,6 +550,60 @@ async function main(): Promise<void> {
   check('B 戶沒開書 → 無共讀區塊（隔離）', readingBlockB === '')
 
   setLlmOverride(null)
+
+  console.log('\n— 多角色：一人養兩角色、零串門 —')
+  const { getCharacterForTenant, invalidateCharacterCache } = await import('../src/modules/characters.js')
+
+  const kkRes = await platformQuery<{ id: number }>(
+    `INSERT INTO characters (slug, name, tagline, soul_pack)
+     VALUES ('kuaikuai', '快快', '想到就說，快快都接得住。', 'soul/packs/kuaikuai')
+     RETURNING id`,
+  )
+  const kuaikuaiId = kkRes.rows[0].id
+  invalidateCharacterCache()
+
+  // 阿明已有慢慢戶 → 再開快快戶（新唯一索引：user × character）
+  let tenantK = await createTenantForUser(userA.id, kuaikuaiId)
+  check('同一人可再開第二角色的戶', tenantK.character_id === kuaikuaiId)
+
+  // 同角色第二戶 → 被唯一索引擋下
+  let dupBlocked = false
+  try {
+    await createTenantForUser(userA.id, kuaikuaiId)
+  } catch {
+    dupBlocked = true
+  }
+  check('同角色重複開戶被唯一索引擋下', dupBlocked)
+
+  // 路由：預設（慢慢）回慢慢戶；指定快快回快快戶
+  const memDefault = await resolveMembership(userA.id)
+  check('resolveMembership 預設回慢慢戶（單角色行為不變）', memDefault?.tenant.id === tenantA.id)
+  const memKK = await resolveMembership(userA.id, kuaikuaiId)
+  check('resolveMembership 指定角色回快快戶', memKK?.tenant.id === tenantK.id)
+
+  // 快快的啟元儀式：名字是快快、不是慢慢
+  await stepGenesis(tenantK, userA.display_name, '哈囉')
+  tenantK = await reloadTenant(tenantK.id)
+  const kkNaming = await stepGenesis(tenantK, userA.display_name, '明哥')
+  check('快快儀式用自己的名字', kkNaming.texts.join('').includes('我叫快快') && !kkNaming.texts.join('').includes('慢慢'))
+  tenantK = await reloadTenant(tenantK.id)
+  const kkBorn = await stepGenesis(tenantK, userA.display_name, '就叫快快')
+  tenantK = await reloadTenant(tenantK.id)
+  check('快快誕生（含 pack 的 tagline）', tenantK.status === 'active' && kkBorn.texts.join('').includes('快快都接得住'))
+  const charK = await getCharacterForTenant(tenantK)
+  const charA2 = await getCharacterForTenant(tenantA)
+  check('角色解析：兩戶各自的角色', charK.slug === 'kuaikuai' && charA2.slug === 'manman')
+
+  // 兩戶記憶零串門（同一個人、兩個角色）
+  const dbK = forTenant(tenantK.id)
+  await dbK.query(
+    `INSERT INTO conversations (tenant_id, user_id, user_message, ai_response) VALUES ($1, $2, $3, $4)`,
+    [userA.id, '快快我跟你說個秘密', '嗯！我聽著。'],
+  )
+  const aConvs = await dbA.query<{ user_message: string }>(
+    `SELECT user_message FROM conversations WHERE tenant_id = $1`,
+  )
+  check('慢慢戶撈不到快快戶的對話（同人跨角色零串門）', !aConvs.rows.some((r) => r.user_message?.includes('秘密')))
 
   console.log(`\n═══ 驗收結果：${passed} 過 / ${failed} 敗 ═══`)
   await pool.end()

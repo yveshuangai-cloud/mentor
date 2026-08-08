@@ -9,6 +9,7 @@ import { formatPromisesBlock } from './proactive/promises.js'
 import { loadNightSoulBlock } from './proactive/nightlife.js'
 import { buildTruthCorrection } from './mirror.js'
 import { buildReadingBlock } from './proactive/reading.js'
+import { getCharacterForTenant } from './characters.js'
 import type { TenantRow, MemberRow, UserRow } from './tenancy.js'
 
 /**
@@ -47,8 +48,9 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
   const { tenant, user, message, attachment } = input
   const db = forTenant(tenant.id)
 
+  const character = await getCharacterForTenant(tenant)
   const [soul, biography, memory, semanticBlock, promisesBlock, nightSoul, truthCorrection, readingBlock, historyRes] = await Promise.all([
-    loadCharacterCore(),
+    loadCharacterCore(character.slug),
     renderBiography(tenant),
     loadMemoryBlocks(tenant.id),
     buildSemanticBlock(tenant.id, message),
@@ -64,7 +66,7 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     ),
   ])
 
-  const familyBridge = tenant.mode === 'family' ? await loadFamilyBridge() : ''
+  const familyBridge = tenant.mode === 'family' ? await loadFamilyBridge(character.slug) : ''
   const system = [
     soul.preBiography,
     `# 我的傳記（只屬於這一戶，絕無別人的）\n\n${biography}`,
