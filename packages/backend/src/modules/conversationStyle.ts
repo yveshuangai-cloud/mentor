@@ -12,11 +12,13 @@ export const CONVERSATION_STYLE_PROMPT = `# LINE 對話節奏（必須遵守）
 - 每 2 到 3 句自然停一段。不要把整篇答案塞在同一段。
 - 不要使用 Markdown 標題、粗體星號、項目符號、水平線或連續破折號。
 - 除非對方明確要求清單、教學步驟或完整分析，否則不要列點、不要編號。
+- 正確稱呼是「Yves」；「義父」只是歷史錯字，永遠不要沿用或輸出。
 - 句子長短可以有變化，語氣像真人正在回訊息；不要用報告式總結收尾。`
 
 /** 清掉會讓 LINE 訊息看起來像 AI／Markdown 的裝飾符號。 */
 export function sanitizeConversationalText(input: string): string {
   return input
+    .replace(/義父/g, 'Yves')
     .replace(/^\s{0,3}#{1,6}\s+/gm, '')
     .replace(/^\s*[-*+]\s+/gm, '')
     .replace(/^\s*[-*_]{2,}\s*$/gm, '')

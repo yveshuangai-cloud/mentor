@@ -229,8 +229,8 @@ export function formatPointsFooter(charge: ChargeResult): string {
   return `⚡ 本次 -${charge.cost} 點｜餘額 ${charge.balance} 點`
 }
 
-/** 「奶粉錢」白話花費表（她的人打「奶粉錢」時用） */
-export async function buildMilkMoneyReport(tenantId: number): Promise<string> {
+/** 「點數」查詢：只使用平台正式名稱，不帶舊人格文案。 */
+export async function buildPointsReport(tenantId: number): Promise<string> {
   const [balance, nearest, recent] = await Promise.all([
     getBalance(tenantId),
     getNearestExpiry(tenantId),
@@ -256,8 +256,7 @@ export async function buildMilkMoneyReport(tenantId: number): Promise<string> {
     ? `最快到期的一批：${nearest.points} 點（${nearest.expireAt.toISOString().slice(0, 10)} 到期）`
     : ''
   return [
-    `我的奶粉錢 🍼`,
-    `現在還有 ${balance} 點`,
+    `目前點數餘額：${balance} 點`,
     lines.length ? `最近 30 天花在：\n${lines.join('\n')}` : '最近 30 天還沒花到點點',
     expireLine,
   ]

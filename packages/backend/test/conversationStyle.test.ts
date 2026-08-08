@@ -28,4 +28,8 @@ describe('LINE conversation style', () => {
     expect(result).toHaveLength(2)
     expect(result.join('').replace(/\n/g, '')).toBe('一。二。三。四。五。六。七。八。')
   })
+
+  it('corrects the historical Yves typo at the final output boundary', () => {
+    expect(sanitizeConversationalText('義父說得對，請回覆義父。')).toBe('Yves說得對，請回覆Yves。')
+  })
 })

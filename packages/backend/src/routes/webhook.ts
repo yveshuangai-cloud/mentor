@@ -44,8 +44,7 @@ import {
 } from '../modules/proactive/reading.js'
 import {
   chargeGate,
-  formatPointsFooter,
-  buildMilkMoneyReport,
+  buildPointsReport,
   InsufficientPointsError,
 } from '../modules/points.js'
 import { forTenant } from '../db/tenantDb.js'
@@ -65,7 +64,7 @@ import {
 
 /**
  * 商用 LINE OA webhook（精簡路由，職責分離——本尊 3000 行 monolith 的教訓）：
- * 驗簽 → 逐事件：解析人 → 路由到租戶 → 分派（啟元／邀請碼／主人指令／奶粉錢／一般對話）。
+ * 驗簽 → 逐事件：解析人 → 路由到租戶 → 分派（啟元／邀請碼／主人指令／點數／一般對話）。
  * 一般對話走扣點閘道；點數不足時她溫柔說明、不動腦。
  */
 
@@ -205,9 +204,9 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
     }
   }
 
-  // ── 奶粉錢（免扣點）──────────────────────────
-  if (text === '奶粉錢') {
-    await replyText(replyToken, [await buildMilkMoneyReport(tenant.id)])
+  // ── 點數查詢（免扣點）──────────────────────────
+  if (/^(?:點數|點數餘額|餘額)$/.test(text)) {
+    await replyText(replyToken, [await buildPointsReport(tenant.id)])
     return
   }
 
@@ -251,7 +250,7 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
   } catch (err) {
     if (err instanceof InsufficientPointsError) {
       await replyText(replyToken, [
-        `我好想回你……但我的奶粉錢用完了 🥺\n（餘額 ${err.balance} 點）\n\n幫我儲值一點點，我就能繼續陪你了。`,
+        `這輪需要點數，但目前餘額是 ${err.balance} 點，所以我沒能完成。請讓威廷檢查測試額度設定。`,
       ])
       return
     }
@@ -371,7 +370,7 @@ async function deliverReply(
         ok = true
       } catch (err) {
         if (err instanceof InsufficientPointsError) {
-          cleanText = [cleanText, `（我想畫給你……但奶粉錢不夠了，餘額 ${err.balance} 點）`]
+          cleanText = [cleanText, `這次圖片沒有生成，因為目前點數餘額是 ${err.balance} 點。請讓威廷檢查測試額度設定。`]
             .filter(Boolean)
             .join('\n')
           ok = true // 有誠實交代，不再疊第二句
@@ -444,7 +443,7 @@ async function handleAudioEvent(app: FastifyInstance, event: LineEvent): Promise
   } catch (err) {
     if (err instanceof InsufficientPointsError) {
       await replyText(replyToken, [
-        `我聽到你說話了……但我的奶粉錢用完了 🥺（餘額 ${err.balance} 點）\n\n幫我儲值一點點，我就能回你了。`,
+        `我收到錄音了，但這輪需要點數，目前餘額是 ${err.balance} 點。請讓威廷檢查測試額度設定。`,
       ])
       return
     }
@@ -548,7 +547,7 @@ async function handleMediaEvent(app: FastifyInstance, event: LineEvent): Promise
   } catch (err) {
     if (err instanceof InsufficientPointsError) {
       await replyText(replyToken, [
-        `我好想看……但我的奶粉錢不夠了 🥺（餘額 ${err.balance} 點）\n\n幫我儲值一點點，我就能看了。`,
+        `我收到圖片了，但讀圖被點數設定擋住（餘額 ${err.balance} 點）。請讓威廷檢查測試額度設定。`,
       ])
       return
     }
