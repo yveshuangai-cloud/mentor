@@ -12,6 +12,7 @@ import { buildReadingBlock } from './proactive/reading.js'
 import { getCharacterForTenant } from './characters.js'
 import { CONVERSATION_STYLE_PROMPT } from './conversationStyle.js'
 import { AUTHORIZED_UPGRADE_PROMPT } from './upgrades.js'
+import { DOCUMENT_SAFETY_PROMPT, loadRecentDocumentContext } from './documents.js'
 import {
   formatSearchContext,
   searchWeb,
@@ -38,6 +39,7 @@ export interface BrainInput {
   user: UserRow
   member: MemberRow
   message: string
+  semanticQuery?: string
   attachment?: BrainAttachment
 }
 
@@ -54,15 +56,16 @@ type ContentBlock =
   | { type: 'document'; source: { type: 'base64'; media_type: string; data: string } }
 
 export async function processMessage(input: BrainInput): Promise<BrainOutput> {
-  const { tenant, user, message, attachment } = input
+  const { tenant, user, message, semanticQuery, attachment } = input
   const db = forTenant(tenant.id)
 
   const character = await getCharacterForTenant(tenant)
-  const [soul, biography, memory, semanticBlock, promisesBlock, nightSoul, truthCorrection, readingBlock, historyRes] = await Promise.all([
+  const [soul, biography, memory, semanticBlock, recentDocumentBlock, promisesBlock, nightSoul, truthCorrection, readingBlock, historyRes] = await Promise.all([
     loadCharacterCore(character.slug),
     renderBiography(tenant),
     loadMemoryBlocks(tenant.id),
-    buildSemanticBlock(tenant.id, message),
+    buildSemanticBlock(tenant.id, semanticQuery ?? message),
+    loadRecentDocumentContext(tenant.id, user.id, semanticQuery ?? message),
     formatPromisesBlock(tenant.id, user.id),
     config.enableNightSoul ? loadNightSoulBlock(tenant.id) : Promise.resolve(''),
     buildTruthCorrection(tenant.id, user.id),
@@ -79,10 +82,11 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
   let webSearchUsed = false
   let webSearchBlock = ''
   let webSearchSources: WebSearchSource[] = []
-  if (shouldUseWebSearch(message)) {
+  const effectiveQuery = semanticQuery ?? message
+  if (shouldUseWebSearch(effectiveQuery)) {
     try {
-      const searchResult = await searchWeb(message)
-      webSearchBlock = formatSearchContext(message, searchResult)
+      const searchResult = await searchWeb(effectiveQuery)
+      webSearchBlock = formatSearchContext(effectiveQuery, searchResult)
       webSearchSources = searchResult.sources
       webSearchUsed = true
     } catch (error) {
@@ -97,6 +101,8 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     memory.topicIndex,
     memory.learnedKnowledge,
     semanticBlock,
+    DOCUMENT_SAFETY_PROMPT,
+    recentDocumentBlock,
     promisesBlock,
     readingBlock,
     webSearchBlock,
