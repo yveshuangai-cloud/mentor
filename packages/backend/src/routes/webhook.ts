@@ -9,7 +9,13 @@ import {
   startLoadingAnimation,
   type LineMessage,
 } from '../modules/line.js'
-import { extractVoiceTags, clipToLineAudio, voiceConfigured, m4aToMp3 } from '../modules/voice.js'
+import {
+  extractVoiceTags,
+  ensurePreferredVoice,
+  clipToLineAudio,
+  voiceConfigured,
+  m4aToMp3,
+} from '../modules/voice.js'
 import { extractImageTags, promptToLineImage, imageGenConfigured } from '../modules/cardgen.js'
 import { transcribeAudio, geminiConfigured } from '../modules/gemini.js'
 import {
@@ -314,6 +320,7 @@ async function deliverReply(
   tenantId: number,
   reply: string,
   textCharge: { cost: number; balance: number; charged: boolean; gate: string },
+  options: { audioFirst?: boolean } = {},
 ): Promise<{ totalCost: number; conversationText: string }> {
   const voiceExtract = extractVoiceTags(reply)
   const imageExtract = extractImageTags(voiceExtract.cleanText)
@@ -379,8 +386,10 @@ async function deliverReply(
   cleanText = sanitizeConversationalText(cleanText)
   const reservedSlots = messages.length + (totalCost > 0 ? 1 : 0)
   const textSlots = Math.max(1, 5 - reservedSlots)
-  const finalMessages: LineMessage[] = splitIntoLineBubbles(cleanText, textSlots).map((text) => ({ type: 'text', text }))
-  finalMessages.push(...messages)
+  const textMessages: LineMessage[] = splitIntoLineBubbles(cleanText, textSlots).map((text) => ({ type: 'text', text }))
+  const audioMessages = options.audioFirst ? messages.filter((message) => message.type === 'audio') : []
+  const otherMessages = options.audioFirst ? messages.filter((message) => message.type !== 'audio') : messages
+  const finalMessages: LineMessage[] = [...audioMessages, ...textMessages, ...otherMessages]
   if (totalCost > 0) {
     finalMessages.push({ type: 'text', text: `⚡ 本次 -${totalCost} 點｜餘額 ${balance} 點` })
   }
@@ -447,6 +456,7 @@ async function handleAudioEvent(app: FastifyInstance, event: LineEvent): Promise
     user,
     member,
     message: `（他用聲音跟我說）${transcript}`,
+    preferVoice: true,
   })
   if (output.webSearchUsed) {
     const searchCharge = await chargeGate(tenant.id, 'web_search', { refType: 'conversation' })
@@ -467,7 +477,8 @@ async function handleAudioEvent(app: FastifyInstance, event: LineEvent): Promise
   const visibleReply = actions.cleanText || (actions.upgradeRequestId
     ? `收到，我已經把這件事記進升級清單 #${actions.upgradeRequestId}。`
     : '')
-  const delivered = await deliverReply(app, replyToken, tenant.id, visibleReply, charge)
+  const voicePreferredReply = ensurePreferredVoice(visibleReply)
+  const delivered = await deliverReply(app, replyToken, tenant.id, voicePreferredReply, charge, { audioFirst: true })
 
   const db = forTenant(tenant.id)
   await db.query(

@@ -40,6 +40,7 @@ export interface BrainInput {
   member: MemberRow
   message: string
   semanticQuery?: string
+  preferVoice?: boolean
   attachment?: BrainAttachment
 }
 
@@ -56,7 +57,7 @@ type ContentBlock =
   | { type: 'document'; source: { type: 'base64'; media_type: string; data: string } }
 
 export async function processMessage(input: BrainInput): Promise<BrainOutput> {
-  const { tenant, user, message, semanticQuery, attachment } = input
+  const { tenant, user, message, semanticQuery, preferVoice, attachment } = input
   const db = forTenant(tenant.id)
 
   const character = await getCharacterForTenant(tenant)
@@ -111,6 +112,10 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     soul.postBiography,
     familyBridge,
     soul.skills,
+    preferVoice
+      ? `# 本輪回覆媒介
+對方這一輪是用錄音跟你說話。請優先用自己的聲音回應：回答中至少輸出一個 [VOICE_GEN|完整且自然的口語句子]，語音控制在一到三句；較長的細節可另外保留文字。不要說出控制標籤本身。`
+      : '',
     CONVERSATION_STYLE_PROMPT,
     user.can_shape_soul ? AUTHORIZED_UPGRADE_PROMPT : '',
     user.can_shape_soul

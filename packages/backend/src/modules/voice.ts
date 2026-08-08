@@ -54,6 +54,31 @@ export function extractVoiceTags(reply: string): ExtractedVoice {
   return { cleanText, clips }
 }
 
+/**
+ * 語音輸入的確定性安全網：模型忘記輸出標籤時，從回答擷取一小段自然句補成語音。
+ * 完整文字仍會保留，避免 TTS 或音檔遞送失敗時讓回答消失。
+ */
+export function ensurePreferredVoice(reply: string, maxChars = 260): string {
+  if (/\[VOICE_GEN\|[^\]]+\]/.test(reply)) return reply
+  const spoken = sanitizeConversationalText(reply)
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/\[[A-Z_]+(?:\|[^\]]*)?\]/g, '')
+    .trim()
+  if (!spoken) return reply
+
+  const window = spoken.slice(0, maxChars + 40)
+  const punctuation = [...window.matchAll(/[。！？!?]/g)]
+    .map((match) => (match.index ?? -1) + 1)
+    .filter((index) => index >= 24 && index <= maxChars)
+  const end = punctuation.at(-1) ?? Math.min(spoken.length, maxChars)
+  const excerpt = spoken.slice(0, end).replace(/[\[\]]/g, '').trim()
+  if (!excerpt) return reply
+
+  const original = reply.trim()
+  const remainder = original.startsWith(excerpt) ? original.slice(excerpt.length).trim() : original
+  return `[VOICE_GEN|${excerpt}]${remainder ? `\n${remainder}` : ''}`
+}
+
 // ── MiniMax TTS ────────────────────────────────────────
 
 export async function synthesize(clip: VoiceClip): Promise<{ mp3: Buffer; durationMs: number }> {
