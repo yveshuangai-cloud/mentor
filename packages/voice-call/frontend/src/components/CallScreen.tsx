@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { CallStatus, FelicityState } from '../hooks/useWebSocket';
+import HealthIndicator from './HealthIndicator';
 
 interface Props {
   callStatus: CallStatus;
@@ -41,6 +42,7 @@ export default function CallScreen(props: Props) {
 
   return (
     <main className="fixed inset-0 bg-gradient-to-b from-[#1f2937] to-[#0b1220] text-white flex flex-col items-center">
+      <HealthIndicator micActive={props.micActive} micError={props.micError} />
       <section className="flex-1 flex flex-col items-center justify-center px-8">
         <img
           src="/avatar.jpg"

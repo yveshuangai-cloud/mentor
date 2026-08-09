@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type WebSocket from 'ws'
 import { config } from '../config.js'
+import { platformQuery } from '../db/index.js'
 import { forTenant } from '../db/tenantDb.js'
 import { processMessage } from '../modules/brain.js'
 import { sanitizeConversationalText } from '../modules/conversationStyle.js'
@@ -32,6 +33,42 @@ function shortSpokenReply(reply: string): string {
 }
 
 export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
+  app.get('/health/services', async (_request, reply) => {
+    const intelligenceConfigured = config.bridgeSecret !== '' || config.anthropicApiKey !== 'not-configured'
+    const hearingConfigured = config.deepgramApiKey !== 'not-configured'
+    const speakingConfigured = voiceConfigured()
+
+    let memoryOk = false
+    let memoryNote = 'PostgreSQL unreachable'
+    try {
+      await platformQuery('SELECT 1')
+      memoryOk = true
+      memoryNote = 'PostgreSQL connected'
+    } catch (error) {
+      app.log.warn({ err: error }, 'voice health database probe failed')
+    }
+
+    const services = {
+      intelligence: {
+        ok: intelligenceConfigured,
+        note: intelligenceConfigured ? 'LLM configured' : 'LLM not configured',
+      },
+      memory: { ok: memoryOk, note: memoryNote },
+      hearing: {
+        ok: hearingConfigured,
+        note: hearingConfigured ? 'Deepgram configured' : 'Deepgram not configured',
+      },
+      speaking: {
+        ok: speakingConfigured,
+        note: speakingConfigured ? 'MiniMax configured' : 'MiniMax not configured',
+      },
+    }
+
+    return reply
+      .header('Cache-Control', 'no-store')
+      .send({ ok: Object.values(services).every((service) => service.ok), services, checkedAt: new Date().toISOString() })
+  })
+
   app.get('/public-config', async () => ({
     liffId: config.liffId === 'not-configured' ? null : config.liffId,
     ready: config.liffId !== 'not-configured'
