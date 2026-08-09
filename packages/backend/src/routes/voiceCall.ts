@@ -5,6 +5,7 @@ import { config } from '../config.js'
 import { forTenant } from '../db/tenantDb.js'
 import { processMessage } from '../modules/brain.js'
 import { sanitizeConversationalText } from '../modules/conversationStyle.js'
+import { extractAndLearn } from '../modules/memory/learner.js'
 import { chargeGate, InsufficientPointsError } from '../modules/points.js'
 import { resolveMembership, upsertUser } from '../modules/tenancy.js'
 import { synthesize, voiceConfigured } from '../modules/voice.js'
@@ -128,12 +129,21 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
           socket.send(audio.mp3, { binary: true })
           sendJson(socket, { type: 'audio:done', generation, durationMs: audio.durationMs })
 
-          await db.query(
+          const conv = await db.query<{ id: number }>(
             `INSERT INTO conversations
                (tenant_id, user_id, message_type, user_message, ai_response, points_charged, metadata)
-             VALUES ($1, $2, 'voice_call', $3, $4, $5, $6)`,
+             VALUES ($1, $2, 'voice_call', $3, $4, $5, $6) RETURNING id`,
             [user.id, transcript, spoken, charge.cost, JSON.stringify({ sessionId: tokenPayload.sid })],
           )
+          void extractAndLearn({
+            tenantId: tenant.id,
+            conversationId: conv.rows[0]?.id ?? null,
+            userId: user.id,
+            userName: user.display_name ?? '對方',
+            userMessage: transcript,
+            aiResponse: spoken,
+            canShapeSoul: user.can_shape_soul,
+          }).catch((error) => request.log.warn({ err: error }, 'voice call memory learner failed'))
           await db.query(
             `UPDATE voice_call_sessions
              SET turn_count = turn_count + 1, updated_at = now()

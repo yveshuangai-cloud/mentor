@@ -178,6 +178,10 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
 
   // This explicit OA action bypasses the LLM and never charges a text turn.
   if (isVoiceCallTrigger(text)) {
+    app.log.info(
+      { webhookEventId: event.webhookEventId, messageId: event.message?.id },
+      'voice call trigger matched',
+    )
     if (!voiceCallAvailable()) {
       await replyText(replyToken, ['語音通話正在完成最後設定，我準備好就會讓你直接打給我。'])
       return
@@ -503,11 +507,22 @@ async function handleAudioEvent(app: FastifyInstance, event: LineEvent): Promise
   const delivered = await deliverReply(app, replyToken, tenant.id, voicePreferredReply, charge, { audioFirst: true })
 
   const db = forTenant(tenant.id)
-  await db.query(
+  const conv = await db.query<{ id: number }>(
     `INSERT INTO conversations (tenant_id, user_id, message_type, user_message, ai_response, points_charged)
-     VALUES ($1, $2, 'audio', $3, $4, $5)`,
+     VALUES ($1, $2, 'audio', $3, $4, $5) RETURNING id`,
     [user.id, `[語音] ${transcript}`, delivered.conversationText, delivered.totalCost],
   )
+
+  void extractAndLearn({
+    tenantId: tenant.id,
+    conversationId: conv.rows[0]?.id ?? null,
+    userId: user.id,
+    userName: user.display_name ?? '對方',
+    userMessage: transcript,
+    aiResponse: delivered.conversationText,
+    canShapeSoul: user.can_shape_soul,
+    allowCommitment: actions.promiseCreated,
+  }).catch((err) => app.log.warn({ err }, 'audio memory learner failed'))
 }
 
 // ── 讀圖／文件（PDF 走多模態；Office/純文字先安全抽取）─────────

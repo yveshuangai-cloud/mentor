@@ -32,6 +32,8 @@ describe('voice call keyword', () => {
   it('only accepts deliberate call commands', () => {
     expect(isVoiceCallTrigger('打電話')).toBe(true)
     expect(isVoiceCallTrigger('跟饅頭通話！')).toBe(true)
+    expect(isVoiceCallTrigger('\u200B 打 電 話 \uFEFF')).toBe(true)
+    expect(isVoiceCallTrigger('打電話！')).toBe(true)
     expect(isVoiceCallTrigger('你可以打電話嗎')).toBe(false)
   })
 })
