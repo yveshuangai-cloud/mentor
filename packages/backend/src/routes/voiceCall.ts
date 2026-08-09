@@ -58,7 +58,13 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
     const intelligenceConfigured = config.bridgeSecret !== '' || config.anthropicApiKey !== 'not-configured'
     const hearingConfigured = config.deepgramApiKey !== 'not-configured'
     const speakingConfigured = voiceConfigured()
-    const livekit = await probeLiveKit()
+    const livekitProbe = await probeLiveKit()
+    const livekit = {
+      ...livekitProbe,
+      enabled: config.livekitEnabled,
+      ok: config.livekitEnabled && livekitProbe.ok,
+      note: config.livekitEnabled ? livekitProbe.note : 'LiveKit connected but disabled',
+    }
 
     let memoryOk = false
     let memoryNote = 'PostgreSQL unreachable'
@@ -116,6 +122,11 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
         && config.livekitApiKey !== 'not-configured'
         && config.livekitApiSecret !== 'not-configured'
         && !config.livekitUrl.includes('not-configured')
+      request.log.info({
+        event: 'voice_transport_selected',
+        transport: livekitReady ? 'livekit' : 'websocket',
+        livekitEnabled: config.livekitEnabled,
+      }, 'voice call transport selected')
       if (livekitReady) {
         const roomName = `mantou-${sessionId}`
         const metadata = JSON.stringify({ lineUserId: identity.lineUserId, sessionId })
@@ -418,6 +429,12 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
             request.log.error({ err: error }, 'voice recognition start failed')
           }
         } else if (message.type === 'audio:interrupt') {
+          request.log.info({
+            event: 'voice_interrupt',
+            sessionId: tokenPayload.sid,
+            activeTurns,
+            activeControllers: activeControllers.size,
+          }, 'caller interrupted voice playback')
           for (const controller of activeControllers) controller.abort()
           generations.cancel()
           finalParts = []

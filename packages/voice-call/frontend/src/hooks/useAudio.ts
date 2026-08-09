@@ -205,10 +205,12 @@ export function useAudio(options: UseAudioOptions = {}) {
         }
         const rms = Math.sqrt(sum / inputData.length);
 
-        // Fix 0F: 動態 VAD 門檻 — AI 播放中提高門檻，防止喇叭迴音誤觸打斷
-        // 0.15 + 4 chunks：減少迴音誤判導致的回應中斷
-        const threshold = isStreamingRef.current ? 0.15 : 0.04;
-        const chunksNeeded = isStreamingRef.current ? 4 : 3;
+        // Barge-in must follow actual buffered playback, not the lifetime of the
+        // ScriptProcessor. isStreamingRef remains true after the buffer drains,
+        // which previously left the microphone at an unreachable 0.15 threshold.
+        const aiAudioBuffered = pcmBufferRef.current.length > 0;
+        const threshold = aiAudioBuffered ? 0.07 : 0.04;
+        const chunksNeeded = aiAudioBuffered ? 2 : 3;
 
         if (rms > threshold) {
           loudChunkCountRef.current++;
@@ -532,7 +534,7 @@ export function useAudio(options: UseAudioOptions = {}) {
   /**
    * 停止播放（打斷時用）
    */
-  const stopPlayback = useCallback(() => {
+  const stopPlayback = useCallback((tailMuteMs = 150) => {
     // 清空 MP3 累積
     mp3TotalRef.current = [];
     mp3TotalSizeRef.current = 0;
@@ -560,8 +562,9 @@ export function useAudio(options: UseAudioOptions = {}) {
     isDecodingRef.current = false;
     pendingDecodeRef.current = false;
 
-    // 2026-06-19 Climb 2 — 啟動 400ms tail mute（慢慢 TTS 殘響期 mic 不送 STT）
-    aiTailMuteUntilRef.current = Date.now() + 400;
+    // Keep only a short echo tail. Long tail muting clips the caller's first word
+    // after a barge-in and makes duplex interaction feel unresponsive.
+    aiTailMuteUntilRef.current = Date.now() + tailMuteMs;
 
     if (playContextRef.current && playContextRef.current.state !== 'closed') {
       playContextRef.current.close();
@@ -581,7 +584,7 @@ export function useAudio(options: UseAudioOptions = {}) {
 
     if (!ctx || ctx.state === 'closed' || !gain) {
       // 沒有播放中 → 直接清空
-      stopPlayback();
+      stopPlayback(0);
       return;
     }
 

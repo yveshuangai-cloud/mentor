@@ -19,8 +19,11 @@ export default function App() {
     onPlaybackStart: (generation) => ws.sendPlaybackStarted(generation),
     onSpeechStart: () => {
       if (ws.felicityStateRef.current === 'speaking') {
+        console.info('[mantou-voice] local barge-in detected');
         ws.sendInterrupt();
-        audio.fadeOutPlayback();
+        // Stop locally at once so the caller's next PCM chunk can reach STT.
+        // The server still cancels the LLM/TTS generation independently.
+        audio.stopPlayback(0);
         ws.updateFelicityState('interrupting');
       }
     },
