@@ -16,6 +16,12 @@ INITIAL_URL="${PUBLIC_BASE_URL:-https://placeholder.invalid}"
 
 cd "$(dirname "$0")"
 
+# Deployment is blocked unless the soul pack, types, and tests all pass.
+npm run soul:build -w packages/backend
+npm run soul:lint -w packages/backend
+npm run typecheck -w packages/backend
+npm test -w packages/backend
+
 gcloud run deploy "$SERVICE" \
   --account="$ACCOUNT" \
   --project="$PROJECT" \

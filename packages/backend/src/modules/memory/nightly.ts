@@ -2,6 +2,8 @@ import { platformQuery } from '../../db/index.js'
 import { linkNewFacts, linkNewConversations, proposeTopics } from './topicLinker.js'
 import { distillChangedTopics } from './distillation.js'
 import { consolidateMemories } from './consolidation.js'
+import { reindexMissingMemories } from './vector.js'
+import { runMemoryRetentionSweep } from './privacy.js'
 
 /**
  * 夜間記憶整理總管（cron 入口）。順序沿本尊 nightly：
@@ -15,6 +17,8 @@ export interface NightlyMemorySummary {
   convs_linked: number
   topics_created: number
   topics_distilled: number
+  vectors_rebuilt: number
+  retention: { documents: number; facts: number; vectors: number }
   consolidation: { promoted: number; decayed: number; cleaned: number; layer_shifts: number }
 }
 
@@ -28,31 +32,41 @@ export async function runNightlyMemory(log: (msg: string) => void): Promise<Nigh
     convs_linked: 0,
     topics_created: 0,
     topics_distilled: 0,
+    vectors_rebuilt: 0,
+    retention: { documents: 0, facts: 0, vectors: 0 },
     consolidation: { promoted: 0, decayed: 0, cleaned: 0, layer_shifts: 0 },
   }
 
   for (const t of tenantsR.rows) {
     try {
-      // 先提案（冷啟動：零主題的新租戶先長出第一批主題，link 才有目標）
-      const proposed = await proposeTopics(t.id)
-      summary.topics_created += proposed.created
-
-      const facts = await linkNewFacts(t.id)
-      summary.facts_linked += facts.linked
-      const convs = await linkNewConversations(t.id)
-      summary.convs_linked += convs.linked
-
-      const distilled = await distillChangedTopics(t.id, 24)
-      summary.topics_distilled += distilled.filter((d) => d.distilled_count > 0).length
-
-      log(
-        `[nightly-memory] tenant=${t.id} topics+${proposed.created} facts+${facts.linked} convs+${convs.linked} distilled=${distilled.length}`,
+      const rebuilt = await reindexMissingMemories(t.id)
+      summary.vectors_rebuilt += rebuilt
+      const users = await platformQuery<{ user_id: number }>(
+        `SELECT user_id FROM tenant_members
+         WHERE tenant_id = $1 AND status = 'confirmed' ORDER BY user_id`,
+        [t.id],
       )
+      for (const member of users.rows) {
+        // Each person's private memories are organized separately; explicitly
+        // family-shared material remains visible to every member.
+        const proposed = await proposeTopics(t.id, member.user_id)
+        summary.topics_created += proposed.created
+        const facts = await linkNewFacts(t.id, member.user_id)
+        summary.facts_linked += facts.linked
+        const convs = await linkNewConversations(t.id, member.user_id)
+        summary.convs_linked += convs.linked
+        const distilled = await distillChangedTopics(t.id, member.user_id, 24)
+        summary.topics_distilled += distilled.filter((d) => d.distilled_count > 0).length
+        log(
+          `[nightly-memory] tenant=${t.id} user=${member.user_id} vectors+${rebuilt} topics+${proposed.created} facts+${facts.linked} convs+${convs.linked} distilled=${distilled.length}`,
+        )
+      }
     } catch (e) {
       console.error(`[nightly-memory] tenant=${t.id} 失敗:`, (e as Error).message)
     }
   }
 
   summary.consolidation = await consolidateMemories()
+  summary.retention = await runMemoryRetentionSweep()
   return summary
 }

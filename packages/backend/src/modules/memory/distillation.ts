@@ -25,8 +25,8 @@ export interface DistillResult {
 
 export async function distillTopic(tenantId: number, topicId: number): Promise<DistillResult | null> {
   const db = forTenant(tenantId)
-  const topicR = await db.query<{ id: number; name: string; description: string | null }>(
-    `SELECT id, name, description FROM memory_topics
+  const topicR = await db.query<{ id: number; name: string; description: string | null; user_id: number | null; visibility: 'private' | 'family_shared' }>(
+    `SELECT id, name, description, user_id, visibility FROM memory_topics
      WHERE tenant_id = $1 AND id = $2 AND NOT is_archived`,
     [topicId],
   )
@@ -75,7 +75,7 @@ export async function distillTopic(tenantId: number, topicId: number): Promise<D
     .map((c) => `[conv #${c.id} ${isoDate(c.created_at)}] 對方: ${c.u} | 我: ${c.a}`)
     .join('\n')
 
-  const prompt = `你是慢慢的「記憶蒸餾員」。把同一主題的 ${total} 條原料，濃縮成 3-10 條精華事實。
+  const prompt = `你是饅頭的「記憶蒸餾員」。把同一主題的 ${total} 條原料，濃縮成 3-10 條精華事實。
 
 【主題】${topic.name}
 ${topic.description ? `【現有印象】${topic.description}` : ''}
@@ -87,7 +87,7 @@ ${factsBlock || '(無)'}
 ${convsBlock || '(無)'}
 
 【蒸餾規則】
-1. 用「慢慢的第一人稱視角」（「對方在 ...」「對方跟我說 ...」「我記得 ...」）
+1. 用「饅頭的第一人稱視角」（「對方在 ...」「對方跟我說 ...」「我記得 ...」）
 2. **保留時序** —— 早期跟近期的事實要看得出來順序（用「最早 ... 然後 ... 最近 ...」或註明日期）
 3. **解衝突** —— 如果原料有矛盾，合併成一條看得出時序的精華
 4. **超越單一原料** —— 蒸餾不是 copy/paste，而是「我從這些原料整體看到的全貌」
@@ -122,9 +122,10 @@ ${convsBlock || '(無)'}
   const newIds: number[] = []
   for (const d of parsed.distilled) {
     const ins = await db.query<{ id: number }>(
-      `INSERT INTO distilled_memories (tenant_id, topic_id, summary, source_ids, importance)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [topicId, d.summary, JSON.stringify(d.source_ids ?? []), Math.max(0, Math.min(1, d.importance ?? 0.5))],
+      `INSERT INTO distilled_memories
+         (tenant_id, topic_id, user_id, visibility, summary, source_ids, importance)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [topicId, topic.user_id, topic.visibility, d.summary, JSON.stringify(d.source_ids ?? []), Math.max(0, Math.min(1, d.importance ?? 0.5))],
     )
     newIds.push(ins.rows[0].id)
   }
@@ -147,6 +148,7 @@ ${convsBlock || '(無)'}
 /** 只蒸「最近有新 link」的主題（cron 用；hours=0 表示全蒸） */
 export async function distillChangedTopics(
   tenantId: number,
+  userId: number,
   onlyChangedSinceHours = 24,
 ): Promise<DistillResult[]> {
   const db = forTenant(tenantId)
@@ -155,11 +157,14 @@ export async function distillChangedTopics(
         `SELECT DISTINCT t.id FROM memory_topics t
          JOIN memory_topic_links l ON l.topic_id = t.id
          WHERE t.tenant_id = $1 AND NOT t.is_archived
-           AND l.added_at > NOW() - ($2 || ' hours')::interval`,
-        [String(onlyChangedSinceHours)],
+           AND (t.user_id = $2 OR t.visibility = 'family_shared')
+           AND l.added_at > NOW() - ($3 || ' hours')::interval`,
+        [userId, String(onlyChangedSinceHours)],
       )
     : await db.query<{ id: number }>(
-        `SELECT id FROM memory_topics WHERE tenant_id = $1 AND NOT is_archived`,
+        `SELECT id FROM memory_topics WHERE tenant_id = $1 AND NOT is_archived
+           AND (user_id = $2 OR visibility = 'family_shared')`,
+        [userId],
       )
 
   const results: DistillResult[] = []

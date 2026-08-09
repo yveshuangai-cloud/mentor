@@ -5,6 +5,7 @@ import {
   extractExcelEntries,
   extractPowerPointXml,
   extractWordXml,
+  splitDocumentChunks,
 } from '../src/modules/documents.js'
 
 describe('document support', () => {
@@ -65,5 +66,12 @@ describe('document text extraction', () => {
     expect(result.truncated).toBe(true)
     expect(result.text.length).toBeLessThan(61_000)
     expect(result.text).toContain('文件中段因長度限制省略')
+  })
+
+  it('splits knowledge into overlapping, citable-sized chunks', () => {
+    const chunks = splitDocumentChunks('第一段。\n\n' + '知識內容。'.repeat(400))
+    expect(chunks.length).toBeGreaterThan(1)
+    expect(chunks.every((chunk) => chunk.length <= 1_400)).toBe(true)
+    expect(chunks.join('')).toContain('第一段')
   })
 })

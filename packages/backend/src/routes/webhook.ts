@@ -30,6 +30,7 @@ import {
 import { stepGenesis } from '../modules/genesis.js'
 import { processMessage } from '../modules/brain.js'
 import { extractAndLearn } from '../modules/memory/learner.js'
+import { handleMemoryCommand } from '../modules/memory/privacy.js'
 import { sanitizeConversationalText, splitIntoLineBubbles } from '../modules/conversationStyle.js'
 import { applyActionTags, promiseSafetyNet } from '../modules/proactive/actionTags.js'
 import { markProactiveReplied } from '../modules/proactive/care.js'
@@ -226,6 +227,12 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
     return
   }
 
+  const memoryCommand = await handleMemoryCommand(tenant.id, user.id, text)
+  if (memoryCommand.handled) {
+    await replyText(replyToken, [memoryCommand.reply])
+    return
+  }
+
   // ── 共讀：導讀模式切換（確定性、免扣點）─────────────
   const modeCmd = detectModeCommand(text)
   if (modeCmd) {
@@ -306,6 +313,7 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
     userMessage: text,
     aiResponse: delivered.conversationText,
     canShapeSoul: user.can_shape_soul,
+    allowCommitment: actions.promiseCreated,
   }).catch((err) => app.log.warn({ err }, 'memory learner failed'))
 }
 
@@ -531,13 +539,16 @@ async function handleMediaEvent(app: FastifyInstance, event: LineEvent): Promise
   const isImage = msgType === 'image'
   const isPdf = !isImage && /\.pdf$/i.test(fileName)
   let extracted: ExtractedDocument | undefined
-  if (!isImage && !isPdf) {
+  if (!isImage) {
     try {
       extracted = await extractDocument(content.data, fileName)
     } catch (err) {
       app.log.warn({ err, fileName }, 'document extraction failed')
-      await replyText(replyToken, ['我有收到檔案，但裡面的文字沒能安全讀出來。它可能有密碼、已加密、內容只有掃描圖片，或檔案本身損壞。'])
-      return
+      if (!isPdf) {
+        await replyText(replyToken, ['我有收到檔案，但裡面的文字沒能安全讀出來。它可能有密碼、已加密、內容只有掃描圖片，或檔案本身損壞。'])
+        return
+      }
+      // Scanned/image-only PDFs still get the model's native document fallback.
     }
   }
 

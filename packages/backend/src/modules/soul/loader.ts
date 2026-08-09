@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -41,6 +42,7 @@ const SKILL_FILES = [
 ]
 
 const cache = new Map<string, string>() // key: `${slug}:${rel}`
+const validated = new Set<string>()
 
 async function readSoulFile(slug: string, rel: string): Promise<string> {
   const key = `${slug}:${rel}`
@@ -55,9 +57,22 @@ async function readSoulFile(slug: string, rel: string): Promise<string> {
       // try next root
     }
   }
-  if (!content) console.warn(`[soul] 讀不到 ${slug}/${rel}（將以空白略過）`)
+  if (!content) throw new Error(`[soul] required file missing: ${slug}/${rel}`)
   cache.set(key, content)
   return content
+}
+
+async function validateManifest(slug: string): Promise<void> {
+  if (validated.has(slug)) return
+  const raw = await readSoulFile(slug, 'manifest.json')
+  const manifest = JSON.parse(raw) as { version?: string; files?: Record<string, string> }
+  if (!manifest.version || !manifest.files) throw new Error(`[soul] invalid manifest for ${slug}`)
+  for (const [file, expected] of Object.entries(manifest.files)) {
+    const content = await readSoulFile(slug, file)
+    const actual = createHash('sha256').update(content, 'utf8').digest('hex')
+    if (actual !== expected) throw new Error(`[soul] hash mismatch: ${slug}/${file}`)
+  }
+  validated.add(slug)
 }
 
 export interface SoulParts {
@@ -70,6 +85,7 @@ export interface SoulParts {
 }
 
 export async function loadCharacterCore(slug = 'mantou'): Promise<SoulParts> {
+  await validateManifest(slug)
   const parts = await Promise.all(CORE_ORDER.map((f) => readSoulFile(slug, f)))
   const skills = await Promise.all(SKILL_FILES.map((f) => readSoulFile(slug, f)))
   const sep = '\n\n---\n\n'

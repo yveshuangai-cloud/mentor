@@ -13,7 +13,7 @@ import { callLlm, extractJson, isLlmConfigured } from '../llm.js'
 export type ReadingMode = 'A' | 'B' | 'C'
 
 export const READING_MODES: Record<ReadingMode, string> = {
-  A: '漫漫帶讀（老師）——我先唸原文、講清楚，你聽完說感覺，一起收斂心得',
+  A: '饅頭帶讀（老師）——我先唸原文、講清楚，你聽完說感覺，一起收斂心得',
   B: '一起聊（夥伴）——我唸完先不解釋，先問你怎麼看，兩人來回聊出心得',
   C: '你主讀（助教）——你先讀先說，我只在你想要時補背景，心得以你為主',
 }
@@ -174,7 +174,7 @@ export async function extractNoteFromText(
             role: 'user',
             content:
               `你是《${book_title}》共讀筆記抽取器。判斷「這一輪對話是否剛完成某一段的共讀、值得記一則讀書筆記」。\n` +
-              `對方說：「${(userMsg || '').slice(0, 400)}」\n慢慢答：「${(aiMsg || '').slice(0, 600)}」\n\n` +
+              `對方說：「${(userMsg || '').slice(0, 400)}」\n饅頭答：「${(aiMsg || '').slice(0, 600)}」\n\n` +
               `只回 JSON：{"note":true/false,"title":"這段主題(6字內)","refs":"範圍或空","note_text":"筆記(2-4句，她們真的聊到的重點＋體會)","partner_voice":"對方有感的原話或空"}\n` +
               `規則：只有確實圍繞這本書某段、有實質討論時 note=true；打招呼/閒聊/預告 → note=false；` +
               `note_text 只根據對話真實內容寫，不補原文、不編造。`,

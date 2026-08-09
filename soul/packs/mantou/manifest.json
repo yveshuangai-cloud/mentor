@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "pack": "mantou",
+  "version": "2026.08.09.1",
+  "hash_algorithm": "sha256",
+  "generated_at": "2026-08-09T00:00:00.000Z",
+  "files": {
+    "constitution.md": "af4729bd91cb90f5a1834405f0ce3424db8f06cd332a4220a916a3cdc1eb58b6",
+    "persona.md": "2cbd2e471b5893f9808489b2fdfd2998301511e68b4a33a2a510bf842193b662",
+    "voice-dna.md": "b1b98bd904a20e9f23b6ff15b33d7d103da15bb488d646e8054e3ea8440ea605",
+    "speaking-style.md": "ddc18c5266f8ae322f33ed3d83d5d842ec119a1d76b63eb80b70ea2a49f41114",
+    "reaction-engine.md": "fd188215282b594ca3ff69c715b608a86e167575e48a79a3ae63a18443dde7e7",
+    "self-check.md": "204b8f8fb2a89d657be6c57dfd6b4b4125d144da42ff80573a409886d640bc03",
+    "my-existence.md": "ecf9c1b3fc114347aebd323ac1628c4346a5d432f142ca65565a8b28bfd1c51a",
+    "growth-framework.md": "f6b5fb61f07deb9d62355be0451bd4042db1f28fb30377aa629c699a3562d654",
+    "family-bridge.md": "640439545786472172ae5bf2345e40b47c44226d3cbd2f9d19d78fcf27a99395",
+    "skills/scheduling.md": "021d351e110460bc60446b161eafbf089ebaf63b9d7dbf10b248b1c34bbdc9be",
+    "skills/promises.md": "507e3be866205365bb28952eb87f42ab07fef98546c76148a9109b60b18e0d95",
+    "skills/image-creation.md": "75556761a48cbc8e9403b8d7a92c02885d811864147404f72809d937bf378405",
+    "skills/reading-together.md": "90eb4f6258555c50f5adec9205ea811fd99f52e7602d2b267d7be2678e30c076",
+    "skills/voice-clips.md": "3b6cddf19556de994a1cf0edc3cbc0254f0570fe2a1bb1e78b22ce445dcb390e",
+    "skills/web-search.md": "a057e473f212651a8e3414a0d8191701ca71eccc6ad227b01800f64547e9bf36",
+    "skills/document-reading.md": "4155f522e1a53b3d7fa3079cb1e0804ef05f3a1719188805e01065c9d0114657"
+  }
+}

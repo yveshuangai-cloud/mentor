@@ -12,7 +12,7 @@ const IMAGE_TAG_RE = /\[IMAGE_GEN\|([^\]]+)\]/g
 // 她的樣子（persona 底層鎖定）——畫到自己時自動釘上，避免每次長得不一樣
 const SELF_APPEARANCE =
   '（角色設定：短黑髮側分瀏海的小女孩，圓臉白皮膚，大而圓的溫暖深色眼睛，淺淺甜笑，戴粉紅色毛球耳朵髮箍，常穿灰色連帽外套，臉上乾淨無彩繪）'
-const SELF_RE = /我|自己|慢慢|漫漫/
+const SELF_RE = /我|自己|饅頭/
 
 export interface ExtractedImages {
   cleanText: string

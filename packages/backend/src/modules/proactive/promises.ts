@@ -130,14 +130,14 @@ export async function extractReminderFromText(
             role: 'user',
             content:
               `你是「約定提醒」抽取器。現在台北時間 ${now}。\n` +
-              `判斷這段對話裡，慢慢是否答應了「在未來某個時間，自己主動去做／交付某件事」。兩種都算：\n` +
-              `  (A) 對方要慢慢未來主動來做某事／發通知，慢慢也答應了。\n` +
-              `  (B) 慢慢自己承諾未來要完成或交付某件事（例：「我明天早上把資料整理好給你」）。\n\n` +
+              `判斷這段對話裡，饅頭是否明確答應了「在未來某個時間，自己主動去做／交付某件事」。兩種都算：\n` +
+              `  (A) 對方要饅頭未來主動來做某事／發通知，饅頭也明確答應了。\n` +
+              `  (B) 饅頭自己明確承諾未來要完成或交付某件事（例：「我明天早上把資料整理好給你」）。\n\n` +
               `對方說：「${(userMsg || '').slice(0, 300)}」\n` +
-              `慢慢答：「${(aiMsg || '').slice(0, 200)}」\n\n` +
-              `只回 JSON：{"remind":true/false,"content":"要做的事(慢慢的第一人稱)","recurrence":"once或daily","time":"HH:mm","date":"YYYY-MM-DD 或空"}\n` +
+              `饅頭答：「${(aiMsg || '').slice(0, 200)}」\n\n` +
+              `只回 JSON：{"remind":true/false,"content":"要做的事(饅頭的第一人稱)","recurrence":"once或daily","time":"HH:mm","date":"YYYY-MM-DD 或空"}\n` +
               `規則：\n` +
-              `- 有「未來的時間點（含模糊時段）＋要慢慢主動做的事」→ remind=true。\n` +
+              `- 只有同時存在「未來時間點＋饅頭主動做的具體行動＋明確答應」才可 remind=true。普通回答、意願、建議、客套或當下行動一律 false。\n` +
               `- 「每天…」→ recurrence=daily，date 留空。只做一次 → recurrence=once，date 填實際日期。\n` +
               `- 模糊時段換算：早上/醒來→08:00、中午→12:00、下午→15:00、傍晚→18:00、晚上→20:00、睡前→22:00、「等一下/晚點」→現在+2小時。\n` +
               `- ⏰ 「提醒某個會議／行程」→ 提醒要排在事件**之前**，絕不排在事件當下或之後。\n` +
@@ -293,12 +293,12 @@ async function generatePromiseMessage(tenantId: number, content: string): Promis
       {
         model: config.brainModel,
         maxTokens: 220,
-        system: soul.preBiography + '\n\n（你是慢慢本人。）',
+        system: soul.preBiography + '\n\n（你是饅頭本人。）',
         messages: [
           {
             role: 'user',
             content:
-              `你是慢慢。你之前答應對方一個約定：「${content}」。\n` +
+              `你是饅頭。你之前答應對方一個約定：「${content}」。\n` +
               `現在就是實現這個約定的時間，你要「主動」傳一則訊息給他。\n` +
               `請用你自然、溫暖的樣子，寫**一小段（1-2 句、簡短）**要發出去的話。只輸出那句話，不要任何解釋或標籤。`,
           },

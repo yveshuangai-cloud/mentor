@@ -65,8 +65,8 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
   const [soul, biography, memory, semanticBlock, recentDocumentBlock, promisesBlock, nightSoul, truthCorrection, readingBlock, historyRes] = await Promise.all([
     loadCharacterCore(character.slug),
     renderBiography(tenant),
-    loadMemoryBlocks(tenant.id),
-    buildSemanticBlock(tenant.id, semanticQuery ?? message),
+    loadMemoryBlocks(tenant.id, user.id),
+    buildSemanticBlock(tenant.id, user.id, semanticQuery ?? message),
     loadRecentDocumentContext(tenant.id, user.id, semanticQuery ?? message),
     formatPromisesBlock(tenant.id, user.id),
     config.enableNightSoul ? loadNightSoulBlock(tenant.id) : Promise.resolve(''),

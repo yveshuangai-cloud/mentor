@@ -19,6 +19,8 @@ interface ExtractedFact {
   corrects?: string | null
 }
 
+export type MemoryVisibility = 'private' | 'family_shared'
+
 const VALID_CATEGORIES: FactCategory[] = ['fact', 'preference', 'correction', 'commitment', 'emotion', 'event']
 
 /** 對話太短、純貼圖、純問候 → 不值得萃取 */
@@ -31,7 +33,7 @@ function shouldExtract(userMessage: string, aiResponse: string): boolean {
 
 const CORRECTION_PATTERNS = /不是|不對|錯了|你記錯|不是這樣|搞錯|說錯|其實是|wrong|no,?\s*(it'?s|that'?s)/i
 
-const EXTRACTION_SYSTEM = `你是慢慢的記憶助手。分析以下對話，萃取出值得長期記住的知識點。
+const EXTRACTION_SYSTEM = `你是饅頭的記憶助手。分析以下對話，萃取出值得長期記住的知識點。
 只萃取具體的、可操作的知識。不要萃取泛泛的寒暄或情緒表達。
 
 回傳 JSON 格式（不要 markdown code block，不要其他文字）：
@@ -51,7 +53,7 @@ const EXTRACTION_SYSTEM = `你是慢慢的記憶助手。分析以下對話，�
 - fact: 具體事實（「對方下週要去日本出差」）
 - preference: 偏好（「對方喜歡喝紅茶不喝咖啡」）
 - correction: 用戶糾正了之前的錯誤（「不是週二，是週三」）。設 is_correction=true，corrects 填被糾正的內容
-- commitment: 慢慢的承諾或約定（「答應明天提醒對方吃藥」）
+- commitment: 饅頭已建立並確認的未來約定；普通回答、意願、建議與客套話都不是承諾
 - emotion: 重要的情緒狀態變化（「對方最近工作壓力很大」）
 - event: 未來事件（「下週五學校有家長會」）
 
@@ -59,7 +61,11 @@ const EXTRACTION_SYSTEM = `你是慢慢的記憶助手。分析以下對話，�
 - 最多萃取 3 個知識點
 - confidence < 0.5 的不要包含
 - 對話沒有值得記住的知識 → {"facts": []}
-- 不要萃取「慢慢說了XX」這種描述，只萃取關於用戶/世界的知識`
+- 不要萃取「饅頭說了XX」這種描述，只萃取關於用戶/世界的知識`
+
+function requestedFamilySharing(message: string): boolean {
+  return /(?:讓|給|跟)(?:家人|全家|大家|家庭成員)(?:知道|看|共享|分享)|(?:家人|全家|大家)(?:都)?可以知道|設為家庭共享/i.test(message)
+}
 
 const CORRECTION_EMPHASIS = `\n\n⚠️ 這段對話可能包含糾錯。特別注意「不是」「不對」「錯了」「你記錯了」「其實是」等訊號。
 如果偵測到糾錯，設 is_correction=true，corrects 填被糾正的錯誤內容。`
@@ -73,8 +79,10 @@ export async function extractAndLearn(params: {
   userMessage: string
   aiResponse: string
   canShapeSoul: boolean
+  allowCommitment?: boolean
 }): Promise<number> {
   const { tenantId, conversationId, userId, userName, userMessage, aiResponse, canShapeSoul } = params
+  const visibility: MemoryVisibility = requestedFamilySharing(userMessage) ? 'family_shared' : 'private'
   if (!shouldExtract(userMessage, aiResponse)) return 0
   if (!isLlmConfigured()) return 0
 
@@ -91,7 +99,7 @@ export async function extractAndLearn(params: {
       messages: [
         {
           role: 'user',
-          content: `${userName}說：${userMessage.slice(0, 500)}\n慢慢回：${aiResponse.slice(0, 500)}`,
+          content: `${userName}說：${userMessage.slice(0, 500)}\n饅頭回：${aiResponse.slice(0, 500)}`,
         },
       ],
     },
@@ -107,11 +115,14 @@ export async function extractAndLearn(params: {
     if (!fact.content || fact.content.length < 3) continue
     if ((fact.confidence ?? 0.8) < 0.5) continue
     const category = VALID_CATEGORIES.includes(fact.category) ? fact.category : 'fact'
+    // Only a promise that was actually persisted by the action layer may become
+    // long-term commitment memory. LLM wording alone is never authoritative.
+    if (category === 'commitment' && !params.allowCommitment) continue
 
     const ins = await db.query<{ id: number }>(
       `INSERT INTO learned_facts
-         (tenant_id, user_id, conversation_id, category, content, confidence, importance_score)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (tenant_id, user_id, conversation_id, category, content, confidence, importance_score, visibility)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id`,
       [
         userId,
@@ -120,13 +131,14 @@ export async function extractAndLearn(params: {
         fact.content.slice(0, 200),
         fact.confidence ?? 0.8,
         category === 'correction' ? 0.7 : 0.5,
+        visibility,
       ],
     )
     const factId = ins.rows[0]?.id
 
     // 進語意層（fire-and-forget；embedding 失敗仍可關鍵字搜到）
     if (factId) {
-      void indexMemory(tenantId, 'learned_fact', factId, `[${category}] ${fact.content}`).catch(() => {})
+      void indexMemory(tenantId, 'learned_fact', factId, `[${category}] ${fact.content}`, userId, visibility).catch(() => {})
     }
 
     // 糾錯：把被糾正的舊知識標 superseded（關鍵字比對，不加 AI 呼叫）
@@ -161,6 +173,11 @@ async function markSuperseded(
         `UPDATE learned_facts SET status = 'superseded', superseded_by = $2
          WHERE tenant_id = $1 AND id = $3`,
         [newFactId, row.id],
+      )
+      await db.query(
+        `DELETE FROM memory_vectors
+         WHERE tenant_id = $1 AND source_type = 'learned_fact' AND source_id = $2`,
+        [row.id],
       )
       break
     }

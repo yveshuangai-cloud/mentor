@@ -19,6 +19,7 @@ const packDir = join(repoRoot, 'soul/packs', slug)
 
 const REQUIRED_FILES = [
   'pack.json',
+  'manifest.json',
   'constitution.md',
   'persona.md',
   'voice-dna.md',
@@ -33,6 +34,8 @@ const REQUIRED_FILES = [
   'skills/image-creation.md',
   'skills/reading-together.md',
   'skills/voice-clips.md',
+  'skills/web-search.md',
+  'skills/document-reading.md',
 ]
 
 // 平台底線（不是角色個性，任何角色不得刪改）：檔案 → 必須出現的字串
@@ -50,6 +53,7 @@ const PII_RE =
   /安咪|安媽咪|吳安安|育潼|威廉|威廷|蔡智堯|羅美宜|jennifer|waitin|windhunter|容容(?!易)|U[0-9a-f]{32}|sk-[A-Za-z0-9_-]{10,}|AKIA[A-Z0-9]{16}|sslip\.io|[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(?![\d.])/i
 
 const FALSE_POSITIVES = [/安安靜靜/]
+const OLD_RUNTIME_IDENTITY = /你是慢慢|慢慢的(?:記憶|第一人稱|承諾)|慢慢(?:答|回)|漫漫帶讀/
 
 async function main(): Promise<void> {
   let failed = 0
@@ -105,7 +109,9 @@ async function main(): Promise<void> {
       else if (/\.(md|json|txt)$/.test(entry.name)) {
         const content = await readFile(p, 'utf8')
         for (const line of content.split('\n')) {
-          if (PII_RE.test(line) && !FALSE_POSITIVES.some((fp) => fp.test(line))) {
+          const approvedExistenceDisclosure = r === 'my-existence.md' && /威廷|Waitin/i.test(line)
+          const generatedManifestMetadata = r === 'manifest.json'
+          if (PII_RE.test(line) && !approvedExistenceDisclosure && !generatedManifestMetadata && !FALSE_POSITIVES.some((fp) => fp.test(line))) {
             fail(`PII 命中：${r} → ${line.trim().slice(0, 60)}`)
           }
         }
@@ -114,6 +120,25 @@ async function main(): Promise<void> {
   }
   await scanDir(packDir)
   if (!failed) ok('PII 掃描：零命中')
+
+  // 4. Runtime prompt identity regression guard. Natural phrases such as
+  // 「慢慢來」are valid Chinese and intentionally not banned.
+  const runtimeRoot = join(repoRoot, 'packages/backend/src')
+  async function scanRuntime(dir: string): Promise<void> {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (entry.name !== 'migrations') await scanRuntime(path)
+      } else if (/\.(ts|md)$/.test(entry.name)) {
+        const content = await readFile(path, 'utf8')
+        if (OLD_RUNTIME_IDENTITY.test(content)) {
+          fail(`執行中提示詞含舊人格稱呼：${path.slice(runtimeRoot.length + 1)}`)
+        }
+      }
+    }
+  }
+  await scanRuntime(runtimeRoot)
+  if (!failed) ok('執行中提示詞：無「慢慢／漫漫」舊人格稱呼')
 
   console.log(failed ? `\n═══ lint 失敗：${failed} 項 ═══` : `\n═══ lint 通過：${slug} 可入 characters 表 ═══`)
   process.exit(failed ? 1 : 0)

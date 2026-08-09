@@ -16,7 +16,10 @@ RUN npm ci --workspace packages/backend --include-workspace-root=false
 COPY packages/backend packages/backend
 COPY soul soul
 
-RUN npm run build -w packages/backend \
+RUN npm run soul:lint -w packages/backend \
+  && npm run typecheck -w packages/backend \
+  && npm test -w packages/backend \
+  && npm run build -w packages/backend \
   && cp packages/backend/src/db/*.sql packages/backend/dist/db/ \
   && { [ -d packages/backend/src/db/migrations ] && cp -r packages/backend/src/db/migrations packages/backend/dist/db/ || true; } \
   && npm prune --omit=dev --workspace packages/backend --include-workspace-root=false

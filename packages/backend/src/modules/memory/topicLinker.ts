@@ -19,29 +19,33 @@ const MAX_ITEMS_PER_CALL = 30
 const CONV_BATCH_SIZE = 12
 const SKIP = 'none'
 
-async function loadTopics(db: TenantDb): Promise<Topic[]> {
+async function loadTopics(db: TenantDb, userId: number): Promise<Topic[]> {
   const r = await db.query<Topic>(
     `SELECT id, name, description FROM memory_topics
-     WHERE tenant_id = $1 AND NOT is_archived ORDER BY id`,
+     WHERE tenant_id = $1 AND NOT is_archived
+       AND (user_id = $2 OR visibility = 'family_shared') ORDER BY id`,
+    [userId],
   )
   return r.rows
 }
 
 // ── facts 歸主題 ─────────────────────────────────
 
-export async function linkNewFacts(tenantId: number): Promise<{ linked: number; skipped: number }> {
+export async function linkNewFacts(tenantId: number, userId: number): Promise<{ linked: number; skipped: number }> {
   const db = forTenant(tenantId)
-  const topics = await loadTopics(db)
+  const topics = await loadTopics(db, userId)
   if (!topics.length || !isLlmConfigured()) return { linked: 0, skipped: 0 }
 
   const factsR = await db.query<{ id: number; category: string; content: string }>(
     `SELECT id, category, content FROM learned_facts
      WHERE tenant_id = $1 AND status = 'active'
+       AND (user_id = $2 OR visibility = 'family_shared')
        AND NOT EXISTS (
          SELECT 1 FROM memory_topic_links l
          WHERE l.source_type = 'learned_fact' AND l.source_id = learned_facts.id
        )
      ORDER BY importance_score DESC, created_at DESC LIMIT 100`,
+    [userId],
   )
   if (!factsR.rows.length) return { linked: 0, skipped: 0 }
 
@@ -60,7 +64,7 @@ export async function linkNewFacts(tenantId: number): Promise<{ linked: number; 
       {
         model: config.extractorModel,
         maxTokens: 2000,
-        system: `你是慢慢的記憶整理員。
+        system: `你是饅頭的記憶整理員。
 任務：把每個「新事實」歸到最相關的「主題」之一。
 規則：
 - 不確定就回 "${SKIP}"（寧可不歸也不要亂歸）
@@ -100,21 +104,23 @@ const CONV_SKIP_PATTERNS = [/^\[(撥號卡片|語音通話|系統|圖片|語音)
 
 export async function linkNewConversations(
   tenantId: number,
+  userId: number,
   maxPerRun = 200,
 ): Promise<{ linked: number; skipped: number }> {
   const db = forTenant(tenantId)
-  const topics = await loadTopics(db)
+  const topics = await loadTopics(db, userId)
   if (!topics.length || !isLlmConfigured()) return { linked: 0, skipped: 0 }
 
   const convR = await db.query<{ id: number; user_message: string | null; ai_response: string | null }>(
     `SELECT c.id, c.user_message, c.ai_response FROM conversations c
      JOIN users u ON u.id = c.user_id
-     WHERE c.tenant_id = $1 AND u.can_shape_soul = TRUE
+     WHERE c.tenant_id = $1 AND c.user_id = $2 AND u.can_shape_soul = TRUE
        AND NOT EXISTS (
          SELECT 1 FROM memory_topic_links l
          WHERE l.source_type = 'conversation' AND l.source_id = c.id
        )
      ORDER BY c.created_at ASC LIMIT ${maxPerRun}`,
+    [userId],
   )
   const valid = convR.rows.filter((c) => {
     const um = (c.user_message ?? '').trim()
@@ -137,7 +143,7 @@ export async function linkNewConversations(
       {
         model: config.extractorModel,
         maxTokens: 2500,
-        system: `你是慢慢的記憶整理員。
+        system: `你是饅頭的記憶整理員。
 任務：把每段對話歸到最相關的主題之一。
 規則：
 - 一段對話只能歸到一個主題（最相關的那個）
@@ -174,21 +180,23 @@ export async function linkNewConversations(
 
 // ── 新主題提案（含冷啟動）──────────────────────────
 
-export async function proposeTopics(tenantId: number): Promise<{ created: number; linked: number }> {
+export async function proposeTopics(tenantId: number, userId: number): Promise<{ created: number; linked: number }> {
   const db = forTenant(tenantId)
   if (!isLlmConfigured()) return { created: 0, linked: 0 }
-  const existing = await loadTopics(db)
+  const existing = await loadTopics(db, userId)
   // 冷啟動：零主題時降門檻，讓新租戶的第一批主題長得出來
   const minImportance = existing.length === 0 ? 0.5 : 0.7
 
   const orphanR = await db.query<{ id: number; category: string; content: string; importance_score: number }>(
     `SELECT id, category, content, importance_score FROM learned_facts
      WHERE tenant_id = $1 AND status = 'active' AND importance_score >= ${minImportance}
+       AND (user_id = $2 OR visibility = 'family_shared')
        AND NOT EXISTS (
          SELECT 1 FROM memory_topic_links l
          WHERE l.source_type = 'learned_fact' AND l.source_id = learned_facts.id
        )
      ORDER BY importance_score DESC, created_at DESC LIMIT 50`,
+    [userId],
   )
   if (orphanR.rows.length < 3) return { created: 0, linked: 0 }
 
@@ -203,7 +211,7 @@ export async function proposeTopics(tenantId: number): Promise<{ created: number
     {
       model: config.brainModel,
       maxTokens: 2000,
-      system: `你是慢慢的記憶整理員。
+      system: `你是饅頭的記憶整理員。
 以下是對方一些「沒有適合主題可歸」的事實。請看看它們有沒有共同主題。
 
 提案 0-3 個新主題，每個必須：
@@ -237,11 +245,11 @@ export async function proposeTopics(tenantId: number): Promise<{ created: number
   for (const p of parsed?.proposals ?? []) {
     if (!p.name || !Array.isArray(p.fact_ids) || p.fact_ids.length < 3) continue
     const ins = await db.query<{ id: number }>(
-      `INSERT INTO memory_topics (tenant_id, user_id, name, description, importance, last_active_at)
-       VALUES ($1, NULL, $2, $3, $4, NOW())
+      `INSERT INTO memory_topics (tenant_id, user_id, name, description, importance, last_active_at, visibility)
+       VALUES ($1, $2, $3, $4, $5, NOW(), 'private')
        ON CONFLICT (tenant_id, user_id, name) DO NOTHING
        RETURNING id`,
-      [p.name.slice(0, 60), p.description?.slice(0, 200) ?? null, Math.max(0, Math.min(1, p.importance ?? 0.7))],
+      [userId, p.name.slice(0, 60), p.description?.slice(0, 200) ?? null, Math.max(0, Math.min(1, p.importance ?? 0.7))],
     )
     const topicId = ins.rows[0]?.id
     if (!topicId) continue

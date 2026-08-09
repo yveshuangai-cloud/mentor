@@ -22,7 +22,7 @@ export function embeddingConfigured(): boolean {
   return embedOverride !== null || config.geminiApiKey !== 'not-configured'
 }
 
-async function embed(texts: string[]): Promise<number[][]> {
+export async function embedTexts(texts: string[]): Promise<number[][]> {
   if (embedOverride) return embedOverride(texts)
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:batchEmbedContents?key=${config.geminiApiKey}`,
@@ -49,23 +49,57 @@ export async function indexMemory(
   sourceType: 'learned_fact' | 'conversation' | 'distilled',
   sourceId: number,
   content: string,
+  userId: number | null = null,
+  visibility: 'private' | 'family_shared' = 'private',
 ): Promise<void> {
   const db = forTenant(tenantId)
   let embedding: number[] | null = null
   if (embeddingConfigured()) {
     try {
-      embedding = (await embed([content]))[0] ?? null
+      embedding = (await embedTexts([content]))[0] ?? null
     } catch {
       embedding = null
     }
   }
   await db.query(
-    `INSERT INTO memory_vectors (tenant_id, source_type, source_id, content, embedding)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO memory_vectors (tenant_id, source_type, source_id, content, embedding, user_id, visibility)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (tenant_id, source_type, source_id)
-       DO UPDATE SET content = EXCLUDED.content, embedding = EXCLUDED.embedding`,
-    [sourceType, sourceId, content.slice(0, 1000), embedding],
+       DO UPDATE SET content = EXCLUDED.content, embedding = EXCLUDED.embedding,
+         user_id = EXCLUDED.user_id, visibility = EXCLUDED.visibility`,
+    [sourceType, sourceId, content.slice(0, 1000), embedding, userId, visibility],
   )
+}
+
+/** Rebuild vectors invalidated by a repair or a transient embedding failure. */
+export async function reindexMissingMemories(tenantId: number, limit = 250): Promise<number> {
+  if (!embeddingConfigured()) return 0
+  const db = forTenant(tenantId)
+  const rows = await db.query<{
+    source_type: 'learned_fact' | 'conversation' | 'distilled'
+    source_id: number
+    content: string
+    user_id: number | null
+    visibility: 'private' | 'family_shared'
+  }>(
+    `SELECT source_type, source_id, content, user_id, visibility
+     FROM memory_vectors
+     WHERE tenant_id = $1 AND embedding IS NULL
+     ORDER BY created_at ASC LIMIT $2`,
+    [limit],
+  )
+  let rebuilt = 0
+  for (const row of rows.rows) {
+    const [embedding] = await embedTexts([row.content])
+    if (!embedding?.length) continue
+    await db.query(
+      `UPDATE memory_vectors SET embedding = $2
+       WHERE tenant_id = $1 AND source_type = $3 AND source_id = $4`,
+      [embedding, row.source_type, row.source_id],
+    )
+    rebuilt++
+  }
+  return rebuilt
 }
 
 export interface SemanticHit {
@@ -94,6 +128,7 @@ function cosine(a: number[], b: number[]): number {
  */
 export async function semanticSearch(
   tenantId: number,
+  userId: number,
   query: string,
   limit = 5,
   minScore = 0.35,
@@ -102,11 +137,13 @@ export async function semanticSearch(
 
   if (embeddingConfigured()) {
     try {
-      const [qVec] = await embed([query])
+      const [qVec] = await embedTexts([query])
       const rows = await db.query<{ source_type: string; source_id: number; content: string; embedding: number[] | null }>(
         `SELECT source_type, source_id, content, embedding FROM memory_vectors
          WHERE tenant_id = $1 AND embedding IS NOT NULL
+           AND (user_id = $2 OR visibility = 'family_shared')
          ORDER BY created_at DESC LIMIT 2000`,
+        [userId],
       )
       return rows.rows
         .map((r) => ({
@@ -134,7 +171,9 @@ export async function semanticSearch(
   if (!keywords.length) return []
   const rows = await db.query<{ source_type: string; source_id: number; content: string }>(
     `SELECT source_type, source_id, content FROM memory_vectors
-     WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 2000`,
+     WHERE tenant_id = $1 AND (user_id = $2 OR visibility = 'family_shared')
+     ORDER BY created_at DESC LIMIT 2000`,
+    [userId],
   )
   return rows.rows
     .map((r) => {
@@ -147,9 +186,9 @@ export async function semanticSearch(
 }
 
 /** brain 注入用：跟當前訊息相關的舊記憶區塊 */
-export async function buildSemanticBlock(tenantId: number, message: string): Promise<string> {
+export async function buildSemanticBlock(tenantId: number, userId: number, message: string): Promise<string> {
   try {
-    const hits = await semanticSearch(tenantId, message, 5)
+    const hits = await semanticSearch(tenantId, userId, message, 5)
     if (!hits.length) return ''
     return (
       '# 跟這句話有關的舊記憶（語意想起來的）\n' +
