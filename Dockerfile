@@ -18,7 +18,7 @@ COPY soul soul
 
 RUN npm run soul:lint -w packages/backend \
   && npm run typecheck -w packages/backend \
-  && npm test -w packages/backend \
+  && DATABASE_URL=postgresql://test:test@127.0.0.1:5432/test npm test -w packages/backend \
   && npm run build -w packages/backend \
   && cp packages/backend/src/db/*.sql packages/backend/dist/db/ \
   && { [ -d packages/backend/src/db/migrations ] && cp -r packages/backend/src/db/migrations packages/backend/dist/db/ || true; } \
