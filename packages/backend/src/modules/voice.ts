@@ -9,7 +9,7 @@ import { sanitizeConversationalText } from './conversationStyle.js'
 
 /**
  * 她的聲音（[VOICE_GEN|…] 技能的執行端）：
- * MiniMax 克隆聲 TTS → ffmpeg 轉 m4a（LINE audio 訊息規格）→ GCS 公開桶。
+ * MiniMax 克隆聲 TTS → ffmpeg 轉 m4a（LINE audio 訊息規格）→ 私有 GCS。
  * 病根紀律：標籤抽取是確定性 regex，不靠她自律；抽取失敗＝退回純文字，不裝死。
  */
 
@@ -145,11 +145,14 @@ export async function m4aToMp3(m4a: Buffer): Promise<Buffer> {
   return ffmpegConvert(m4a, 'm4a', 'mp3', ['-c:a', 'libmp3lame', '-b:a', '64k'])
 }
 
-// ── GCS 上傳（ADC，天條：不注入 SA JSON；私有物件用短效 signed URL）────
+// ── GCS 上傳（ADC，天條：不注入 SA JSON；私有物件由穩定媒體路由代理）────
 
-const VOICE_BUCKET = process.env.VOICE_BUCKET ?? 'mantou-voice-2026'
+export const VOICE_BUCKET = process.env.VOICE_BUCKET ?? 'mantou-voice-2026'
 const storage = new Storage()
-const SIGNED_URL_TTL_MS = 15 * 60 * 1000
+
+export function mediaObject(name: string) {
+  return storage.bucket(VOICE_BUCKET).file(name)
+}
 
 export async function uploadMedia(buf: Buffer, contentType: string, ext: string, prefix = 'media'): Promise<string> {
   const name = `${prefix}/${randomUUID()}.${ext}`
@@ -157,14 +160,10 @@ export async function uploadMedia(buf: Buffer, contentType: string, ext: string,
   await file.save(buf, {
     contentType,
     resumable: false,
-    metadata: { cacheControl: 'private, max-age=900' },
+    metadata: { cacheControl: 'public, max-age=31536000, immutable' },
   })
-  const [url] = await file.getSignedUrl({
-    version: 'v4',
-    action: 'read',
-    expires: Date.now() + SIGNED_URL_TTL_MS,
-  })
-  return url
+  const base = config.publicBaseUrl.replace(/\/$/, '')
+  return `${base}/media/${encodeURIComponent(prefix)}/${encodeURIComponent(name.split('/').at(-1)!)}`
 }
 
 export async function uploadAudio(m4a: Buffer): Promise<string> {

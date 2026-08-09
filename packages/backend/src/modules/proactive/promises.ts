@@ -1,10 +1,13 @@
 import { config } from '../../config.js'
 import { forTenant } from '../../db/tenantDb.js'
 import { platformQuery } from '../../db/index.js'
-import { pushText } from '../line.js'
+import { pushMessages, type LineMessage } from '../line.js'
 import { callLlm, extractJson, isLlmConfigured } from '../llm.js'
 import { loadCharacterCore } from '../soul/loader.js'
 import { chargeGate, InsufficientPointsError } from '../points.js'
+import { searchWeb } from '../webSearch.js'
+import { clipToLineAudio, voiceConfigured } from '../voice.js'
+import { sanitizeConversationalText, splitIntoLineBubbles } from '../conversationStyle.js'
 
 /**
  * ⏰ 約定履約系統（移植自本尊 promises，租戶化）。
@@ -310,6 +313,44 @@ async function generatePromiseMessage(tenantId: number, content: string): Promis
   }
 }
 
+const RESEARCH_PROMISE_RE = /查|搜尋|研究|新聞|趨勢|案例|最新|近期|資料/
+const VOICE_PROMISE_RE = /語音|聲音|播|說重點|說一下/
+
+function voiceExcerpt(text: string): string {
+  const clean = sanitizeConversationalText(text)
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const window = clean.slice(0, 360)
+  const ends = [...window.matchAll(/[。！？!?]/g)]
+    .map((match) => (match.index ?? -1) + 1)
+    .filter((index) => index >= 80 && index <= 320)
+  return clean.slice(0, ends.at(-1) ?? Math.min(clean.length, 280)).trim()
+}
+
+async function generatePromiseDelivery(
+  tenantId: number,
+  content: string,
+): Promise<{ text: string; voiceText?: string }> {
+  if (!RESEARCH_PROMISE_RE.test(content)) {
+    return { text: await generatePromiseMessage(tenantId, content) }
+  }
+
+  // 研究約定不能再只用 LLM 寫「我去查」；到點必須真的拿到 grounded search 結果。
+  const result = await searchWeb(content)
+  const sources = result.sources.slice(0, 3)
+    .map((source) => `${source.title} ${source.url}`)
+    .join('\n')
+  const text = sanitizeConversationalText(
+    `教練，我查完了。\n\n${result.answer.slice(0, 6500)}` +
+      (sources ? `\n\n查證來源：\n${sources}` : ''),
+  )
+  const voiceText = VOICE_PROMISE_RE.test(content)
+    ? `教練，我把這次查到的重點用聲音跟你說。${voiceExcerpt(result.answer)}`
+    : undefined
+  return { text, voiceText }
+}
+
 export interface FireResult {
   fired: number
   skippedNoPoints: number
@@ -354,8 +395,15 @@ export async function fireDuePromises(log: (msg: string) => void): Promise<FireR
           )
           const lineId = targetR.rows[0]?.line_user_id
           if (lineId) {
-            const msg = await generatePromiseMessage(p.tenant_id, p.content)
-            await pushText(lineId, [msg])
+            const delivery = await generatePromiseDelivery(p.tenant_id, p.content)
+            const messages: LineMessage[] = splitIntoLineBubbles(delivery.text, delivery.voiceText ? 4 : 5)
+              .map((text) => ({ type: 'text', text }))
+            if (delivery.voiceText) {
+              if (!voiceConfigured()) throw new Error('voice requested by promise but TTS is not configured')
+              const audio = await clipToLineAudio({ text: delivery.voiceText })
+              messages.push({ type: 'audio', originalContentUrl: audio.url, duration: audio.durationMs })
+            }
+            await pushMessages(lineId, messages)
             result.fired++
             log(`[promise] 已履約 id=${p.id}: "${p.content.slice(0, 30)}"`)
           }

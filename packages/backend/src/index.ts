@@ -8,6 +8,7 @@ import { autoMigrate } from './db/index.js'
 import { processQueuedWebhookEvents, webhookRoutes } from './routes/webhook.js'
 import { adminRoutes } from './routes/admin.js'
 import { paymentRoutes } from './routes/payments.js'
+import { mediaRoutes } from './routes/media.js'
 import { expireSweep } from './modules/points.js'
 import { runNightlyMemory } from './modules/memory/nightly.js'
 import { fireDuePromises } from './modules/proactive/promises.js'
@@ -26,6 +27,7 @@ async function bootstrap(): Promise<void> {
   await app.register(webhookRoutes, { prefix: '/api/webhook' })
   await app.register(adminRoutes, { prefix: '/api/admin' })
   await app.register(paymentRoutes, { prefix: '/api/payments' })
+  await app.register(mediaRoutes, { prefix: '/media' })
 
   app.get('/health', async () => ({ ok: true, service: 'mantou-platform', ts: new Date().toISOString() }))
 

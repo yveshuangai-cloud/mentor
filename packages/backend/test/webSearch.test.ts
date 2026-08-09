@@ -13,6 +13,8 @@ describe('web search routing', () => {
     expect(shouldUseWebSearch('請你去搜集心理學與組織管理的知識')).toBe(true)
     expect(shouldUseWebSearch('幫我查證這則消息是否屬實')).toBe(true)
     expect(shouldUseWebSearch('目前的公司 CEO 是誰？')).toBe(true)
+    expect(shouldUseWebSearch('整理一下最近的 AI Agent 趨勢與應用')).toBe(true)
+    expect(shouldUseWebSearch('查最近的應用案例')).toBe(true)
   })
 
   it('extracts an autonomous search request without exposing the tool tag', () => {

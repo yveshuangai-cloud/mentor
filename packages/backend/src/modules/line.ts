@@ -70,6 +70,11 @@ export async function pushText(lineUserId: string, texts: string[]): Promise<voi
   })
 }
 
+/** 主動推播混合訊息（研究報告文字＋持久語音等；LINE 上限 5 則）。 */
+export async function pushMessages(lineUserId: string, messages: LineMessage[]): Promise<void> {
+  await lineApi('/v2/bot/message/push', { to: lineUserId, messages: messages.slice(0, 5) })
+}
+
 /**
  * 在一對一聊天室顯示 LINE 原生的三點 loading 動畫。
  * LINE 規格只接受 5–60 秒；OA 一送出真正訊息，動畫會自動消失。

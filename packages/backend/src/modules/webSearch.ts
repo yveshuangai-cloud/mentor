@@ -31,7 +31,7 @@ export function shouldUseWebSearch(message: string): boolean {
   if (/^(?:請)?(?:幫我)?(?:上網)?(?:搜尋|查詢|查一下|查資料|找資料)[：:\s]/i.test(text)) return true
   if (/(?:上網|網路|網際網路).{0,8}(?:搜尋|查|找|研究)/i.test(text)) return true
   if (/(?:搜集|蒐集|收集|研究|學習).{0,24}(?:知識|資料|資訊|心理學|管理|法規|技術)/i.test(text)) return true
-  if (/(?:最新|近期|今天|昨日|昨天|目前|現在).{0,18}(?:新聞|消息|價格|行情|法規|政策|版本|研究|資料|狀況|趨勢|是誰|如何)/i.test(text)) return true
+  if (/(?:最新|近期|最近|今天|昨日|昨天|目前|現在).{0,24}(?:新聞|消息|價格|行情|法規|政策|版本|研究|資料|狀況|趨勢|案例|應用|是誰|如何)/i.test(text)) return true
   if (/(?:查證|核實|真假|是否屬實|有沒有根據|資料來源|情報)/i.test(text)) return true
   if (/(?:現任|目前的).{0,16}(?:總統|首相|市長|部長|執行長|CEO|負責人|董事長)/i.test(text)) return true
   return /(?:新聞|天氣|股價|匯率|賽程|選舉結果).{0,10}(?:最新|今天|現在|目前)/i.test(text)
@@ -57,13 +57,17 @@ export async function searchWeb(query: string): Promise<WebSearchResult> {
         parts: [{
           text:
             `請搜尋並整理下列問題。優先採用官方、原始資料、學術機構或可信媒體；` +
-            `清楚區分查到的事實與推論。用繁體中文回答。\n\n${query.slice(0, 1000)}`,
+            `至少以兩個第一方官方來源或可信媒體交叉確認。不要把 Reddit、內容農場、` +
+            `SEO 目錄站或未署名彙整頁當成主要證據。清楚區分查到的事實與推論。` +
+            `用繁體中文回答。\n\n${query.slice(0, 1000)}`,
         }],
       }],
       tools: [{ googleSearch: {} }],
       generationConfig: { temperature: 0 },
     }),
-    signal: AbortSignal.timeout(25_000),
+    // Grounded Search 在冷啟動時常超過 25 秒；25 秒會把正常請求誤判成失敗。
+    // webhook 已先落 durable inbox，promise 履約也走 cron，允許較完整的搜尋時間。
+    signal: AbortSignal.timeout(55_000),
   })
   if (!res.ok) {
     throw new Error(`Gemini web search HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`)
