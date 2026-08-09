@@ -14,19 +14,125 @@ import { sanitizeConversationalText } from './conversationStyle.js'
  */
 
 export interface VoiceClip {
-  text: string // 要唸的句子（含 <#秒#> 停頓，已剝除（情緒）括號）
-  emotion?: string // MiniMax emotion 參數
+  text: string // 要唸的句子（可含 <#秒#> 停頓與 MiniMax 2.8 interjection tags）
+  emotion?: VoiceEmotion
+  style?: VoiceStyle
 }
 
-const VOICE_TAG_RE = /\[VOICE_GEN\|([^\]]+)\]/g
+export type VoiceEmotion = 'calm' | 'happy' | 'sad' | 'surprised'
+export type VoiceStyle = 'conversation' | 'news' | 'comfort' | 'encourage'
+
+export const MINIMAX_TTS_MODEL = 'speech-2.8-hd'
+
+// 新格式：[VOICE_GEN emotion="calm" style="news"|完整句子]
+// 舊格式 [VOICE_GEN|完整句子] 保持相容，缺省值由後端語意導演補齊。
+const VOICE_TAG_RE = /\[VOICE_GEN\b([^|\]]*)\|([^\]]+)\]/g
 const KISS_TAG_RE = /\[親親\]/g
-// （笑）（嘆氣）等標記 → MiniMax emotion；抽掉括號不讓 TTS 唸出來
-const EMOTION_MAP: [RegExp, string][] = [
-  [/（(大?笑|輕笑|噗哧)）/, 'happy'],
-  [/（嘆氣）/, 'sad'],
-  [/（(悄悄|小聲)）/, 'neutral'],
-  [/（(驚呼|驚訝)）/, 'surprised'],
+
+const VALID_EMOTIONS = new Set<VoiceEmotion>(['calm', 'happy', 'sad', 'surprised'])
+const VALID_STYLES = new Set<VoiceStyle>(['conversation', 'news', 'comfort', 'encourage'])
+
+// MiniMax 2.8 原生 interjection tags。保留在 TTS 文字中，讓它真的發出聲音而非只改整段情緒。
+const INTERJECTION_MAP: [RegExp, string, VoiceEmotion?][] = [
+  [/[（(](?:大笑|笑)[）)]/g, '(laughs)', 'happy'],
+  [/[（(](?:輕笑|噗哧)[）)]/g, '(chuckle)', 'happy'],
+  [/[（(]嘆氣[）)]/g, '(sighs)', 'sad'],
+  [/[（(](?:呼吸|深呼吸)[）)]/g, '(breath)'],
+  [/[（(]吸氣[）)]/g, '(inhale)'],
+  [/[（(](?:吐氣|呼氣)[）)]/g, '(exhale)'],
+  [/[（(](?:驚呼|驚訝)[）)]/g, '(gasps)', 'surprised'],
 ]
+
+interface VoiceProfile {
+  emotion: VoiceEmotion
+  style: VoiceStyle
+  speed: number
+  pitch: number
+}
+
+function logTts(severity: 'INFO' | 'ERROR', payload: Record<string, unknown>): void {
+  const line = JSON.stringify({ severity, event: 'minimax_tts', ...payload })
+  if (severity === 'ERROR') console.error(line)
+  else console.info(line)
+}
+
+function readVoiceAttributes(raw: string): Pick<VoiceClip, 'emotion' | 'style'> {
+  const emotionRaw = raw.match(/\bemotion\s*=\s*"([^"]+)"/i)?.[1]?.toLowerCase()
+  const styleRaw = raw.match(/\bstyle\s*=\s*"([^"]+)"/i)?.[1]?.toLowerCase()
+  return {
+    emotion: emotionRaw && VALID_EMOTIONS.has(emotionRaw as VoiceEmotion)
+      ? emotionRaw as VoiceEmotion
+      : undefined,
+    style: styleRaw && VALID_STYLES.has(styleRaw as VoiceStyle)
+      ? styleRaw as VoiceStyle
+      : undefined,
+  }
+}
+
+function normalizeInterjections(input: string): { text: string; emotion?: VoiceEmotion } {
+  let text = input
+  let emotion: VoiceEmotion | undefined
+  for (const [pattern, replacement, inferredEmotion] of INTERJECTION_MAP) {
+    if (pattern.test(text)) {
+      text = text.replace(pattern, replacement)
+      emotion ??= inferredEmotion
+    }
+    pattern.lastIndex = 0
+  }
+  return { text, emotion }
+}
+
+/** 饅頭的確定性語音導演：即使模型漏標，也能依語意選擇場景與情緒。 */
+export function resolveVoiceProfile(clip: VoiceClip): VoiceProfile {
+  const text = clip.text
+  let style = clip.style
+  if (!style) {
+    if (/新聞|消息|報導|趨勢|研究|調查|資料|來源|市場|政策|科技|AI\b/i.test(text)) style = 'news'
+    else if (/難過|傷心|辛苦|委屈|失落|害怕|焦慮|抱歉|陪你|不用急|慢慢來/.test(text)) style = 'comfort'
+    else if (/加油|做得到|相信你|很棒|太好了|恭喜|一起來|往前走|一定可以/.test(text)) style = 'encourage'
+    else style = 'conversation'
+  }
+
+  let emotion = clip.emotion
+  if (!emotion) {
+    if (/驚訝|沒想到|竟然|真的嗎|太意外|[！!]{2,}/.test(text)) emotion = 'surprised'
+    else if (style === 'comfort' && /難過|傷心|辛苦|委屈|失落|抱歉/.test(text)) emotion = 'sad'
+    else if (style === 'encourage') emotion = 'happy'
+    else emotion = 'calm'
+  }
+
+  const settings: Record<VoiceStyle, Pick<VoiceProfile, 'speed' | 'pitch'>> = {
+    conversation: { speed: 0.96, pitch: 0 },
+    news: { speed: 1.05, pitch: 0 },
+    comfort: { speed: 0.9, pitch: -1 },
+    encourage: { speed: 1.0, pitch: 1 },
+  }
+  return { emotion, style, ...settings[style] }
+}
+
+function sentenceParts(text: string): string[] {
+  return text.match(/[^。！？!?]+(?:[。！？!?]+|$)/g)?.map((part) => part.trim()).filter(Boolean) ?? [text]
+}
+
+/** 同一標籤內若前後語意明顯轉折，最多拆成兩段，各自套用情緒。 */
+function splitEmotionalTurns(clip: VoiceClip): VoiceClip[] {
+  const parts = sentenceParts(clip.text)
+  if (parts.length < 2 || clip.emotion || clip.style) return [clip]
+  for (let i = 1; i < parts.length; i++) {
+    const left = parts.slice(0, i).join('')
+    const right = parts.slice(i).join('')
+    if (left.length < 8 || right.length < 8) continue
+    const leftProfile = resolveVoiceProfile({ text: left })
+    const rightProfile = resolveVoiceProfile({ text: right })
+    if (leftProfile.emotion !== rightProfile.emotion || leftProfile.style !== rightProfile.style) {
+      return [
+        { text: left, emotion: leftProfile.emotion, style: leftProfile.style },
+        { text: right, emotion: rightProfile.emotion, style: rightProfile.style },
+      ]
+    }
+  }
+  return [clip]
+}
 
 export interface ExtractedVoice {
   cleanText: string // 拿掉語音標籤後、給文字訊息用的回覆
@@ -36,18 +142,19 @@ export interface ExtractedVoice {
 /** 確定性抽取：把 [VOICE_GEN|…] 從回覆裡拆出來（最多 2 段，防灑） */
 export function extractVoiceTags(reply: string): ExtractedVoice {
   const clips: VoiceClip[] = []
-  let cleanText = reply.replace(VOICE_TAG_RE, (_m, inner: string) => {
+  let cleanText = reply.replace(VOICE_TAG_RE, (_m, rawAttributes: string, inner: string) => {
     if (clips.length >= 2) return ''
-    let emotion: string | undefined
-    let text = String(inner)
-    for (const [re, emo] of EMOTION_MAP) {
-      if (re.test(text)) {
-        emotion = emotion ?? emo
-        text = text.replace(re, '')
+    const attrs = readVoiceAttributes(rawAttributes)
+    const normalized = normalizeInterjections(String(inner))
+    const text = sanitizeConversationalText(normalized.text)
+    if (text) {
+      const base: VoiceClip = { text, emotion: attrs.emotion ?? normalized.emotion, style: attrs.style }
+      for (const clip of splitEmotionalTurns(base)) {
+        if (clips.length >= 2) break
+        const profile = resolveVoiceProfile(clip)
+        clips.push({ ...clip, emotion: clip.emotion ?? profile.emotion, style: clip.style ?? profile.style })
       }
     }
-    text = sanitizeConversationalText(text)
-    if (text) clips.push({ text, emotion })
     return ''
   })
   cleanText = cleanText.replace(KISS_TAG_RE, '').replace(/\n{3,}/g, '\n\n').trim()
@@ -82,6 +189,7 @@ export function ensurePreferredVoice(reply: string, maxChars = 260): string {
 // ── MiniMax TTS ────────────────────────────────────────
 
 export async function synthesize(clip: VoiceClip): Promise<{ mp3: Buffer; durationMs: number }> {
+  const profile = resolveVoiceProfile(clip)
   const groupQuery = config.minimaxGroupId
     ? `?GroupId=${encodeURIComponent(config.minimaxGroupId)}`
     : ''
@@ -92,25 +200,61 @@ export async function synthesize(clip: VoiceClip): Promise<{ mp3: Buffer; durati
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'speech-02-hd',
+      model: MINIMAX_TTS_MODEL,
       text: clip.text,
+      stream: false,
+      language_boost: 'Chinese',
+      output_format: 'hex',
       voice_setting: {
         voice_id: config.minimaxVoiceId,
-        speed: 0.95,
-        ...(clip.emotion ? { emotion: clip.emotion } : {}),
+        speed: profile.speed,
+        vol: 1,
+        pitch: profile.pitch,
+        emotion: profile.emotion,
       },
-      audio_setting: { format: 'mp3', sample_rate: 32000 },
+      audio_setting: { format: 'mp3', sample_rate: 32000, bitrate: 128000, channel: 1 },
     }),
   })
-  if (!res.ok) throw new Error(`MiniMax TTS HTTP ${res.status}`)
+  if (!res.ok) {
+    logTts('ERROR', {
+      model: MINIMAX_TTS_MODEL,
+      emotion: profile.emotion,
+      style: profile.style,
+      speed: profile.speed,
+      pitch: profile.pitch,
+      traceId: res.headers.get('trace-id'),
+      httpStatus: res.status,
+    })
+    throw new Error(`MiniMax TTS HTTP ${res.status}`)
+  }
   const data = (await res.json()) as {
     base_resp?: { status_code?: number; status_msg?: string }
     data?: { audio?: string }
     extra_info?: { audio_length?: number }
+    trace_id?: string
   }
   if (data.base_resp?.status_code !== 0 || !data.data?.audio) {
+    logTts('ERROR', {
+      model: MINIMAX_TTS_MODEL,
+      emotion: profile.emotion,
+      style: profile.style,
+      speed: profile.speed,
+      pitch: profile.pitch,
+      traceId: data.trace_id ?? null,
+      statusCode: data.base_resp?.status_code ?? null,
+    })
     throw new Error(`MiniMax TTS 失敗: ${data.base_resp?.status_code} ${data.base_resp?.status_msg}`)
   }
+  logTts('INFO', {
+    model: MINIMAX_TTS_MODEL,
+    emotion: profile.emotion,
+    style: profile.style,
+    speed: profile.speed,
+    pitch: profile.pitch,
+    traceId: data.trace_id ?? null,
+    durationMs: data.extra_info?.audio_length ?? 0,
+    interjections: clip.text.match(/\((?:laughs|chuckle|breath|inhale|exhale|gasps|sighs)\)/g) ?? [],
+  })
   return {
     mp3: Buffer.from(data.data.audio, 'hex'),
     durationMs: data.extra_info?.audio_length ?? 0,

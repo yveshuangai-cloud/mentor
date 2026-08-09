@@ -115,7 +115,7 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     soul.skills,
     preferVoice
       ? `# 本輪回覆媒介
-對方這一輪是用錄音跟你說話。請優先用自己的聲音回應：回答中至少輸出一個 [VOICE_GEN|完整且自然的口語句子]，語音控制在一到三句；較長的細節可另外保留文字。不要說出控制標籤本身。`
+對方這一輪是用錄音跟你說話。請優先用自己的聲音回應：回答中至少輸出一個 [VOICE_GEN emotion="calm" style="conversation"|完整且自然的口語句子]，語音控制在一到三句；較長的細節可另外保留文字。依語意選擇 emotion="calm|happy|sad|surprised" 與 style="conversation|news|comfort|encourage"。不要說出控制標籤本身。`
       : '',
     CONVERSATION_STYLE_PROMPT,
     user.can_shape_soul ? AUTHORIZED_UPGRADE_PROMPT : '',

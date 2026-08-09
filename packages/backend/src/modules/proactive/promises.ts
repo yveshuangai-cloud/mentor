@@ -400,7 +400,7 @@ export async function fireDuePromises(log: (msg: string) => void): Promise<FireR
               .map((text) => ({ type: 'text', text }))
             if (delivery.voiceText) {
               if (!voiceConfigured()) throw new Error('voice requested by promise but TTS is not configured')
-              const audio = await clipToLineAudio({ text: delivery.voiceText })
+              const audio = await clipToLineAudio({ text: delivery.voiceText, emotion: 'calm', style: 'news' })
               messages.push({ type: 'audio', originalContentUrl: audio.url, duration: audio.durationMs })
             }
             await pushMessages(lineId, messages)
