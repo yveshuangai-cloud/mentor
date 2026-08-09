@@ -1,18 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { closeLiff, createVoiceSession, getLiffProfile, initLiff, type LiffProfile } from './lib/liff';
 import { useAudio } from './hooks/useAudio';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useLiveKit } from './hooks/useLiveKit';
 import CallScreen from './components/CallScreen';
 import DialTone from './components/DialTone';
-import MicPermission from './components/MicPermission';
 
 export default function App() {
   const [profile, setProfile] = useState<LiffProfile | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
-  const [micConsent, setMicConsent] = useState(false);
   const [starting, setStarting] = useState(false);
   const [transport, setTransport] = useState<'websocket' | 'livekit'>('websocket');
+  const startedRef = useRef(false);
   const livekit = useLiveKit();
 
   const audio = useAudio({
@@ -75,15 +74,20 @@ export default function App() {
         await audio.startMic();
         ws.connect(session.token, session.sessionId);
       }
-      setMicConsent(true);
     } catch (error) {
       audio.stopMic();
-      setMicConsent(false);
+      startedRef.current = false;
       setInitError(error instanceof Error ? error.message : '無法啟動麥克風。');
     } finally {
       setStarting(false);
     }
   }, [audio, livekit, starting, ws]);
+
+  useEffect(() => {
+    if (!profile || initError || startedRef.current) return;
+    startedRef.current = true;
+    void beginCall();
+  }, [beginCall, initError, profile]);
 
   const hangUp = useCallback(() => {
     if (transport === 'livekit') livekit.hangUp();
@@ -96,6 +100,7 @@ export default function App() {
   }, [audio, livekit, transport, ws]);
 
   const retry = useCallback(() => {
+    startedRef.current = true;
     setInitError(null);
     void beginCall();
   }, [beginCall]);
@@ -111,10 +116,6 @@ export default function App() {
     );
   }
 
-  if (profile && !micConsent) {
-    return <MicPermission onAllow={() => void beginCall()} onDeny={closeLiff} />;
-  }
-
   const call = transport === 'livekit'
     ? livekit
     : {
@@ -126,6 +127,8 @@ export default function App() {
         isSpeakerOn: audio.isSpeakerOn,
         toggleMute: audio.toggleMute,
         toggleSpeaker: audio.toggleSpeaker,
+        getMicVolume: audio.getMicVolume,
+        getRemoteVolume: audio.getRemoteVolume,
       };
 
   if (!profile || call.callStatus === 'idle') {
@@ -151,6 +154,8 @@ export default function App() {
         onRetry={retry}
         onToggleMute={call.toggleMute}
         onToggleSpeaker={call.toggleSpeaker}
+        getMicVolume={call.getMicVolume}
+        getRemoteVolume={call.getRemoteVolume}
       />
     </>
   );
