@@ -67,6 +67,7 @@ import {
   isVoiceCallTrigger,
   voiceCallAvailable,
 } from '../modules/voiceCall/trigger.js'
+import { handleAieqPostback, handleAieqText } from '../modules/aieq/channel.js'
 
 /**
  * 商用 LINE OA webhook（精簡路由，職責分離——本尊 3000 行 monolith 的教訓）：
@@ -80,6 +81,7 @@ interface LineEvent {
   replyToken?: string
   source?: { userId?: string; type?: string }
   message?: { id?: string; type?: string; text?: string; fileName?: string; fileSize?: number }
+  postback?: { data?: string }
 }
 
 // 多模態附件上限（Claude PDF 上限 32MB/100頁，這裡收緊保守值）
@@ -120,6 +122,21 @@ export async function processQueuedWebhookEvents(app: FastifyInstance, limit = 2
 }
 
 async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void> {
+  if (event.type === 'postback') {
+    const lineUserId = event.source?.userId
+    const replyToken = event.replyToken
+    const data = event.postback?.data
+    if (!lineUserId || !replyToken || !data) return
+    const profile = await getLineProfile(lineUserId)
+    const user = await upsertUser(lineUserId, profile)
+    const messages = await handleAieqPostback({
+      userId: user.id,
+      data,
+      eventId: `line:${event.webhookEventId ?? `${lineUserId}:${data}`}`,
+    })
+    if (messages) await replyMessages(replyToken, messages)
+    return
+  }
   if (event.type !== 'message') return
   const msgType = event.message?.type
   const lineUserId = event.source?.userId
@@ -173,6 +190,18 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
   if (tenant.status === 'genesis_pending') {
     const genesis = await stepGenesis(tenant, user.display_name, text)
     await replyText(replyToken, genesis.texts)
+    return
+  }
+
+  // AIEQ 是獨立測評引擎：明確啟動後才接管文字；不扣點，也不進對話記憶。
+  const aieqMessages = await handleAieqText({
+    userId: user.id,
+    tenantId: tenant.id,
+    text,
+    eventId: `line:${event.webhookEventId ?? event.message?.id ?? `${lineUserId}:${Date.now()}`}`,
+  })
+  if (aieqMessages) {
+    await replyMessages(replyToken, aieqMessages)
     return
   }
 

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>AIEQ｜AI 時代行為傾向</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    :root{--pink:#d95f82;--ink:#505158;--paper:#f7f4f2;--white:#fff;--muted:#777780}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:system-ui,-apple-system,"Noto Sans TC",sans-serif}
+    main{max-width:620px;margin:auto;padding:24px 18px 100px}.brand{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+    .brand b{font-size:24px;letter-spacing:.08em}.pill{font-size:12px;border:1px solid var(--ink);border-radius:99px;padding:5px 9px}
+    .card{background:var(--white);border:1.5px solid var(--ink);border-radius:22px;padding:22px;box-shadow:6px 6px 0 rgba(80,81,88,.12);margin-bottom:18px}
+    .progress{height:8px;border-radius:99px;background:#e5dfe0;overflow:hidden;margin:14px 0 24px}.progress i{display:block;height:100%;background:var(--pink)}
+    .scenario{color:var(--pink);font-weight:750;line-height:1.55}.prompt{font-size:22px;line-height:1.4;margin:10px 0 18px}
+    button{font:inherit;color:inherit;cursor:pointer}.choice,.primary,.secondary{width:100%;border-radius:14px;padding:14px 16px;margin:7px 0;text-align:left}
+    .choice{background:var(--paper);border:1px solid #cac5c6}.choice:hover{border-color:var(--pink);transform:translateY(-1px)}
+    .primary{background:var(--pink);border:0;color:white;text-align:center;font-weight:800}.secondary{background:white;border:1px solid var(--ink);text-align:center}
+    .controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}.animal{width:100%;aspect-ratio:1;object-fit:contain;border-radius:18px;background:var(--paper)}
+    .type{font-size:42px;letter-spacing:.08em;margin:8px 0}.ability{display:grid;grid-template-columns:90px 1fr 34px;gap:8px;align-items:center;margin:11px 0;font-size:13px}
+    .bar{height:8px;background:#eee8e9;border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;background:var(--pink)}
+    .friend{display:grid;grid-template-columns:54px 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #e8e2e3}.friend img{width:54px;height:54px;border-radius:50%;object-fit:cover;background:var(--paper)}
+    .notice{font-size:13px;line-height:1.55;color:var(--muted)}label.toggle{display:flex;gap:10px;align-items:flex-start;margin:14px 0}.hidden{display:none!important}
+    nav{position:fixed;bottom:0;left:0;right:0;background:rgba(247,244,242,.96);border-top:1px solid #ddd5d6;display:flex;justify-content:center;padding:9px max(10px,env(safe-area-inset-bottom))}
+    nav div{width:min(620px,100%);display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}nav button{border:0;background:transparent;padding:10px;font-size:13px}nav button.active{color:var(--pink);font-weight:800}
+    .error{background:#fff0f3;border-color:var(--pink)}
+  </style>
+</head>
+<body><main>
+  <div class="brand"><b>AIEQ</b><span class="pill">非官方 MBTI・非心理診斷</span></div>
+  <section id="loading" class="card">正在確認 LINE 身分…</section>
+  <section id="error" class="card error hidden"></section>
+  <section id="testView" class="hidden"><div id="questionCard" class="card"></div></section>
+  <section id="resultView" class="hidden"><div id="resultCard" class="card"></div></section>
+  <section id="friendsView" class="hidden">
+    <div class="card"><h2>我的 AIEQ 朋友圈</h2><p class="notice">LINE 不提供好友名單。只有朋友開啟你分享的邀請，並完成雙方同意後，才會出現在這裡。</p><button id="shareBtn" class="primary">邀請一位朋友</button><button id="deleteBtn" class="secondary">刪除我的全部 AIEQ 資料</button></div>
+    <div id="inviteCard" class="card hidden"></div><div id="friendList" class="card"></div>
+  </section>
+</main>
+<nav class="hidden" id="nav"><div><button data-view="test" class="active">測評</button><button data-view="result">結果</button><button data-view="friends">朋友圈</button></div></nav>
+<script>
+const $=s=>document.querySelector(s);let token='',state=null,profile=null;
+const labels={ai_collaboration:'AI 協作',transition_speed:'轉型速度',ambiguity_tolerance:'模糊容忍',agency:'主動性',verification:'驗證能力',continuous_learning:'持續學習'};
+function safe(t){return String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function api(path,options={}){const res=await fetch('/api/aieq'+path,{...options,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token,...options.headers}});const body=await res.json();if(!res.ok)throw new Error(body.error||'request_failed');return body}
+function showError(e){$('#loading').classList.add('hidden');$('#error').classList.remove('hidden');$('#error').textContent='目前無法開啟 AIEQ：'+e.message}
+function switchView(name){['test','result','friends'].forEach(v=>$('#'+v+'View').classList.toggle('hidden',v!==name));document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===name));if(name==='friends')loadFriends()}
+function render(){if(!state)return;$('#loading').classList.add('hidden');$('#nav').classList.remove('hidden');if(state.session.status==='completed'){renderResult();switchView('result');return}const q=state.question,p=Math.round(state.session.currentQuestionIndex/state.session.totalQuestions*100);$('#questionCard').innerHTML=`<small>第 ${state.session.currentQuestionIndex+1}／${state.session.totalQuestions} 題</small><div class="progress"><i style="width:${p}%"></i></div><div class="scenario">${safe(q.scenario)}</div><h1 class="prompt">${safe(q.prompt)}</h1>${q.options.map(o=>`<button class="choice" data-option="${safe(o.id)}"><b>${safe(o.shortLabel)}</b><br><span class="notice">${safe(o.label)}</span></button>`).join('')}<div class="controls"><button class="secondary" data-kind="uncertain">不確定／跳過</button><button class="secondary" data-kind="back">回上一題</button></div><button class="secondary" data-kind="pause">先休息，下次繼續</button>`;document.querySelectorAll('[data-option]').forEach(b=>b.onclick=()=>send('answer',b.dataset.option));document.querySelectorAll('[data-kind]').forEach(b=>b.onclick=()=>send(b.dataset.kind))}
+async function send(kind,optionId){const body={eventId:crypto.randomUUID(),source:'card',kind,questionId:kind==='back'||kind==='pause'?undefined:state.question.id,optionId,occurredAt:new Date().toISOString()};state=await api(`/sessions/${state.session.id}/events`,{method:'POST',body:JSON.stringify(body)});render()}
+function renderResult(){const r=state.result,a=r.animal,abilities=Object.values(r.aieqAbilities),shared=profile?.visibility==='friends';$('#resultCard').innerHTML=`<img class="animal" src="${safe(a.imagePath)}" alt="${safe(a.name)}"><div class="type">${safe(r.preferenceCode)}</div><h2>${safe(a.name)}型</h2><p>${safe(a.strength)}</p><p><b>容易忽略：</b>${safe(a.blindSpot)}</p><p><b>成長路線：</b>${safe(a.growthRoute)}</p><h3>六項 AIEQ 能力</h3>${abilities.map(x=>`<div class="ability"><span>${safe(labels[x.dimension])}</span><div class="bar"><i style="width:${x.score}%"></i></div><b>${Math.round(x.score)}</b></div>`).join('')}<p class="notice">結果信心程度 ${Math.round(r.overallConfidence*100)}%。人格偏好與 AIEQ 能力分開計算。</p><div id="confirmBox"><label class="toggle"><input id="visible" type="checkbox" ${shared?'checked':''}>允許已互相連結的 AIEQ 朋友看到我的類型</label><label class="toggle"><input id="personalize" type="checkbox" ${state.session.personalizationConsent?'checked':''}>允許饅頭只把結果用於溝通方式參考</label><button id="confirmBtn" class="primary">${profile?'更新確認設定':'確認這是我的目前類型'}</button></div>`;$('#confirmBtn').onclick=confirmResult}
+async function confirmResult(){await api(`/sessions/${state.session.id}/confirm`,{method:'POST',body:JSON.stringify({visibleToFriends:$('#visible').checked,personalizationConsent:$('#personalize').checked})});profile=(await api('/me')).profile;$('#confirmBox').innerHTML='<p><b>已確認。</b>你仍可重新測評或調整分享設定。</p>'}
+async function loadFriends(){try{const data=await api('/friends');$('#friendList').innerHTML='<h3>已連結的朋友</h3>'+(data.friends.length?data.friends.map(f=>`<div class="friend"><img src="${safe(f.picture_url||f.animal.imagePath)}"><div><b>${safe(f.display_name||'LINE 朋友')}</b><br><small>${safe(f.animal.name)}型</small></div><b>${safe(f.type_code)}</b></div>`).join(''):'<p class="notice">還沒有朋友出現在這裡。</p>')}catch(e){showError(e)}}
+async function share(){if(!profile){alert('請先完成並確認自己的測評結果。');return}const inv=await api('/friend-invites',{method:'POST'});const text=`我完成了 AIEQ AI 時代行為傾向測評。一起測完後，我們可以互相看看類型：${inv.url}`;if(window.liff?.isApiAvailable('shareTargetPicker'))await liff.shareTargetPicker([{type:'text',text}],{isMultiple:true});else await navigator.clipboard.writeText(text)}
+async function claimInvite(value){try{await api('/friend-invites/'+encodeURIComponent(value)+'/claim',{method:'POST'});$('#inviteCard').innerHTML='<b>你們已成為 AIEQ 朋友。</b>';loadFriends()}catch(e){$('#inviteCard').textContent='邀請無法使用：'+e.message}}
+async function deleteData(){if(!confirm('這會永久刪除你的測評、結果、邀請與 AIEQ 朋友連結。確定刪除嗎？'))return;await api('/me/data',{method:'DELETE',body:JSON.stringify({confirmation:'DELETE_AIEQ'})});location.href='/aieq'}
+async function init(){const cfg=await fetch('/api/aieq/config').then(r=>r.json());if(!cfg.liffId||cfg.liffId==='not-configured')throw new Error('LIFF_ID 尚未設定');await liff.init({liffId:cfg.liffId});if(!liff.isLoggedIn()){liff.login({redirectUri:location.href});return}token=liff.getIDToken();if(!token)throw new Error('LINE openid 權限尚未開啟');state=await api('/sessions',{method:'POST'});profile=(await api('/me')).profile;render();const invite=new URLSearchParams(location.search).get('invite');if(invite){$('#inviteCard').classList.remove('hidden');$('#inviteCard').innerHTML='<h3>朋友邀請</h3><p>接受後，只有雙方選擇公開給朋友的類型才會互相顯示。</p><button class="primary" id="claimBtn">接受邀請</button>';$('#claimBtn').onclick=()=>claimInvite(invite)}}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>switchView(b.dataset.view));$('#shareBtn').onclick=share;$('#deleteBtn').onclick=deleteData;init().catch(showError)
+</script></body></html>

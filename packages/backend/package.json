@@ -11,6 +11,7 @@
     "start:voice": "node dist/voiceIndex.js",
     "start:livekit-agent": "node dist/livekitAgent.js start",
     "test": "vitest run",
+    "test:aieq:integration": "tsx scripts/aieq-integration.ts",
     "acceptance": "tsx scripts/acceptance.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "soul:build": "tsx scripts/build-soul-manifest.ts",

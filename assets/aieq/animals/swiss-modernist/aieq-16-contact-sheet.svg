@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 2048 2048" role="img" aria-labelledby="title desc">
+  <title id="title">AIEQ 16 Swiss modernist animal emblems</title>
+  <desc id="desc">Sixteen animal identity images with exact four-letter personality codes overlaid in the upper left.</desc>
+  <style>
+    .tile { fill: #F7F4F2; stroke: #505158; stroke-width: 3; }
+    .code { fill: #505158; font: 700 42px Arial, sans-serif; letter-spacing: 3px; }
+  </style>
+  <rect width="2048" height="2048" fill="#F7F4F2"/>
+
+  <g transform="translate(0 0)"><rect class="tile" x="8" y="8" width="496" height="496" rx="22"/><image x="12" y="12" width="488" height="488" xlink:href="istj-beaver.png"/><text class="code" x="34" y="62">ISTJ</text></g>
+  <g transform="translate(512 0)"><rect class="tile" x="8" y="8" width="496" height="496" rx="22"/><image x="12" y="12" width="488" height="488" xlink:href="isfj-penguin.png"/><text class="code" x="34" y="62">ISFJ</text></g>
+  <g transform="translate(1024 0)"><rect class="tile" x="8" y="8" width="496" height="496" rx="22"/><image x="12" y="12" width="488" height="488" xlink:href="infj-elephant.png"/><text class="code" x="34" y="62">INFJ</text></g>
+  <g transform="translate(1536 0)"><rect class="tile" x="8" y="8" width="496" height="496" rx="22"/><image x="12" y="12" width="488" height="488" xlink:href="intj-owl.png"/><text class="code" x="34" y="62">INTJ</text></g>
+
+  <g transform="translate(0 512)"><rect class="tile" x="8" y="8" width="496" height="496" rx="22"/><image x="12" y="12" width="488" height="488" xlink:href="istp-cat.png"/><text class="code" x="34" y="62">ISTP</text></g>
+  <g transform="translate(512 512)"><rect class="tile" x="8" y="8" width="496" height="496" rx="22"/><image x="12" y="12" width="488" height="488" xlink:href="isfp-red-panda.png"/><text class="code" x="34" y="62">ISFP</text></g>
+  <g transform="translate(1024 512)"><rect class="tile" x="8" y="8" width="496" height="496" rx="22"/><image x="12" y="12" width="488" height="488" xlink:href="infp-deer.png"/><text class="code" x="34" y="62">INFP</text></g>
+  <g transform="translate(1536 512)"><rect class="tile" x="8" y="8" width="496" height="496" rx="22"/><image x="12" y="12" width="488" height="488" xlink:href="intp-octopus.png"/><text class="code" x="34" y="62">INTP</text></g>
+
+  <g transform="translate(0 1024)"><rect class="tile" x="8" y="8" width="496" height="496" rx="22"/><image x="12" y="12" width="488" height="488" xlink:href="estp-cheetah.png"/><text class="code" x="34" y="62">ESTP</text></g>
+  <g transform="translate(512 1024)"><rect class="tile" x="8" y="8" width="496" height="496" rx="22"/><image x="12" y="12" width="488" height="488" xlink:href="esfp-parrot.png"/><text class="code" x="34" y="62">ESFP</text></g>
+  <g transform="translate(1024 1024)"><rect class="tile" x="8" y="8" width="496" height="496" rx="22"/><image x="12" y="12" width="488" height="488" xlink:href="enfp-otter.png"/><text class="code" x="34" y="62">ENFP</text></g>
+  <g transform="translate(1536 1024)"><rect class="tile" x="8" y="8" width="496" height="496" rx="22"/><image x="12" y="12" width="488" height="488" xlink:href="entp-crow.png"/><text class="code" x="34" y="62">ENTP</text></g>
+
+  <g transform="translate(0 1536)"><rect class="tile" x="8" y="8" width="496" height="496" rx="22"/><image x="12" y="12" width="488" height="488" xlink:href="estj-sheepdog.png"/><text class="code" x="34" y="62">ESTJ</text></g>
+  <g transform="translate(512 1536)"><rect class="tile" x="8" y="8" width="496" height="496" rx="22"/><image x="12" y="12" width="488" height="488" xlink:href="esfj-bee.png"/><text class="code" x="34" y="62">ESFJ</text></g>
+  <g transform="translate(1024 1536)"><rect class="tile" x="8" y="8" width="496" height="496" rx="22"/><image x="12" y="12" width="488" height="488" xlink:href="enfj-dolphin.png"/><text class="code" x="34" y="62">ENFJ</text></g>
+  <g transform="translate(1536 1536)"><rect class="tile" x="8" y="8" width="496" height="496" rx="22"/><image x="12" y="12" width="488" height="488" xlink:href="entj-orca.png"/><text class="code" x="34" y="62">ENTJ</text></g>
+</svg>

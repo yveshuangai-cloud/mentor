@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 848 848" role="img" aria-labelledby="title desc">
+  <title id="title">AIEQ 16 types geometric identity system</title>
+  <desc id="desc">A four by four grid of pink and gray abstract personality glyphs with exact four-letter type codes in the upper left.</desc>
+  <defs>
+    <style>
+      .card { fill: #fff; stroke: #55565c; stroke-width: 2; }
+      .code { fill: #55565c; font: 700 22px Arial, sans-serif; letter-spacing: 1px; }
+      .gray { fill: none; stroke: #55565c; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+      .pink { fill: none; stroke: #e85d87; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+      .gray-fill { fill: #55565c; }
+      .pink-fill { fill: #e85d87; }
+    </style>
+
+    <g id="energy-i">
+      <circle class="gray" cx="96" cy="108" r="18"/>
+      <circle class="gray" cx="96" cy="108" r="32" opacity=".35"/>
+    </g>
+    <g id="energy-e">
+      <circle class="gray-fill" cx="96" cy="108" r="8"/>
+      <path class="gray" d="M96 76V60M96 140v16M64 108H48M128 108h16"/>
+      <circle class="gray-fill" cx="96" cy="56" r="5"/>
+      <circle class="gray-fill" cx="96" cy="160" r="5"/>
+      <circle class="gray-fill" cx="44" cy="108" r="5"/>
+      <circle class="gray-fill" cx="148" cy="108" r="5"/>
+    </g>
+    <g id="information-s">
+      <rect class="pink" x="70" y="82" width="18" height="18"/>
+      <rect class="pink" x="104" y="116" width="18" height="18"/>
+      <path class="pink" d="M88 91h25v25" opacity=".65"/>
+    </g>
+    <g id="information-n">
+      <path class="pink" d="M58 124C66 72 124 72 134 116C139 138 120 150 104 140"/>
+      <circle class="pink-fill" cx="58" cy="124" r="5"/>
+      <circle class="pink-fill" cx="104" cy="140" r="5"/>
+    </g>
+    <g id="decision-t">
+      <path class="gray" d="M96 76l31 32-31 32-31-32Z"/>
+      <path class="gray" d="M58 108h76" opacity=".55"/>
+    </g>
+    <g id="decision-f">
+      <path class="gray" d="M62 94C76 76 116 76 130 94M62 122C76 140 116 140 130 122"/>
+      <circle class="gray-fill" cx="62" cy="108" r="5"/>
+      <circle class="gray-fill" cx="130" cy="108" r="5"/>
+    </g>
+    <g id="action-j">
+      <rect class="pink" x="48" y="60" width="96" height="96" rx="10" opacity=".65"/>
+    </g>
+    <g id="action-p">
+      <path class="pink" d="M62 72C43 90 43 126 62 145M76 157C100 169 128 157 140 136M146 119C150 98 140 76 122 66" opacity=".65"/>
+    </g>
+
+    <g id="glyph-istj"><use href="#action-j"/><use href="#energy-i"/><use href="#information-s"/><use href="#decision-t"/></g>
+    <g id="glyph-isfj"><use href="#action-j"/><use href="#energy-i"/><use href="#information-s"/><use href="#decision-f"/></g>
+    <g id="glyph-infj"><use href="#action-j"/><use href="#energy-i"/><use href="#information-n"/><use href="#decision-f"/></g>
+    <g id="glyph-intj"><use href="#action-j"/><use href="#energy-i"/><use href="#information-n"/><use href="#decision-t"/></g>
+    <g id="glyph-istp"><use href="#action-p"/><use href="#energy-i"/><use href="#information-s"/><use href="#decision-t"/></g>
+    <g id="glyph-isfp"><use href="#action-p"/><use href="#energy-i"/><use href="#information-s"/><use href="#decision-f"/></g>
+    <g id="glyph-infp"><use href="#action-p"/><use href="#energy-i"/><use href="#information-n"/><use href="#decision-f"/></g>
+    <g id="glyph-intp"><use href="#action-p"/><use href="#energy-i"/><use href="#information-n"/><use href="#decision-t"/></g>
+    <g id="glyph-estp"><use href="#action-p"/><use href="#energy-e"/><use href="#information-s"/><use href="#decision-t"/></g>
+    <g id="glyph-esfp"><use href="#action-p"/><use href="#energy-e"/><use href="#information-s"/><use href="#decision-f"/></g>
+    <g id="glyph-enfp"><use href="#action-p"/><use href="#energy-e"/><use href="#information-n"/><use href="#decision-f"/></g>
+    <g id="glyph-entp"><use href="#action-p"/><use href="#energy-e"/><use href="#information-n"/><use href="#decision-t"/></g>
+    <g id="glyph-estj"><use href="#action-j"/><use href="#energy-e"/><use href="#information-s"/><use href="#decision-t"/></g>
+    <g id="glyph-esfj"><use href="#action-j"/><use href="#energy-e"/><use href="#information-s"/><use href="#decision-f"/></g>
+    <g id="glyph-enfj"><use href="#action-j"/><use href="#energy-e"/><use href="#information-n"/><use href="#decision-f"/></g>
+    <g id="glyph-entj"><use href="#action-j"/><use href="#energy-e"/><use href="#information-n"/><use href="#decision-t"/></g>
+  </defs>
+
+  <rect width="848" height="848" fill="#fff"/>
+
+  <g transform="translate(16 16)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ISTJ</text><use href="#glyph-istj"/></g>
+  <g transform="translate(224 16)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ISFJ</text><use href="#glyph-isfj"/></g>
+  <g transform="translate(432 16)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">INFJ</text><use href="#glyph-infj"/></g>
+  <g transform="translate(640 16)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">INTJ</text><use href="#glyph-intj"/></g>
+
+  <g transform="translate(16 224)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ISTP</text><use href="#glyph-istp"/></g>
+  <g transform="translate(224 224)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ISFP</text><use href="#glyph-isfp"/></g>
+  <g transform="translate(432 224)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">INFP</text><use href="#glyph-infp"/></g>
+  <g transform="translate(640 224)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">INTP</text><use href="#glyph-intp"/></g>
+
+  <g transform="translate(16 432)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ESTP</text><use href="#glyph-estp"/></g>
+  <g transform="translate(224 432)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ESFP</text><use href="#glyph-esfp"/></g>
+  <g transform="translate(432 432)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ENFP</text><use href="#glyph-enfp"/></g>
+  <g transform="translate(640 432)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ENTP</text><use href="#glyph-entp"/></g>
+
+  <g transform="translate(16 640)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ESTJ</text><use href="#glyph-estj"/></g>
+  <g transform="translate(224 640)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ESFJ</text><use href="#glyph-esfj"/></g>
+  <g transform="translate(432 640)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ENFJ</text><use href="#glyph-enfj"/></g>
+  <g transform="translate(640 640)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ENTJ</text><use href="#glyph-entj"/></g>
+</svg>

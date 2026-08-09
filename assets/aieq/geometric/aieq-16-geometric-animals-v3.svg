@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 848 848" role="img" aria-labelledby="title desc">
+  <title id="title">AIEQ 16 geometric animal personality cards</title>
+  <desc id="desc">Sixteen pink and gray geometric animal icons, each with an exact four-letter personality code in the upper left.</desc>
+  <defs>
+    <style>
+      .card{fill:#fff;stroke:#55565c;stroke-width:2}.code{fill:#55565c;font:700 22px Arial,sans-serif;letter-spacing:1px}
+      .p{fill:#e85d87}.g{fill:#55565c}.w{fill:#fff}.ps{fill:none;stroke:#e85d87;stroke-width:7;stroke-linecap:round;stroke-linejoin:round}.gs{fill:none;stroke:#55565c;stroke-width:6;stroke-linecap:round;stroke-linejoin:round}.thin{stroke-width:4}
+    </style>
+
+    <g id="beaver">
+      <ellipse class="p" cx="96" cy="110" rx="45" ry="42"/><circle class="g" cx="68" cy="78" r="11"/><circle class="g" cx="124" cy="78" r="11"/>
+      <ellipse class="w" cx="96" cy="119" rx="28" ry="22"/><circle class="g" cx="81" cy="103" r="5"/><circle class="g" cx="111" cy="103" r="5"/><ellipse class="g" cx="96" cy="116" rx="8" ry="6"/>
+      <rect class="w" x="87" y="126" width="8" height="15" rx="2"/><rect class="w" x="97" y="126" width="8" height="15" rx="2"/><path class="gs thin" d="M63 119h-19M129 119h19"/>
+      <ellipse class="g" cx="143" cy="144" rx="14" ry="28" transform="rotate(-28 143 144)"/><path class="ps thin" d="M134 132l18 22M130 143l17 17"/>
+    </g>
+    <g id="penguin">
+      <ellipse class="g" cx="96" cy="111" rx="42" ry="57"/><ellipse class="w" cx="96" cy="120" rx="27" ry="40"/><circle class="w" cx="81" cy="91" r="10"/><circle class="w" cx="111" cy="91" r="10"/><circle class="g" cx="83" cy="92" r="4"/><circle class="g" cx="109" cy="92" r="4"/>
+      <path class="p" d="M88 103l8-8 8 8-8 7Z"/><path class="p" d="M55 106l-17 28 25-11ZM137 106l17 28-25-11Z"/><path class="p" d="M79 165l-20 8h25ZM113 165l20 8h-25Z"/>
+    </g>
+    <g id="elephant">
+      <ellipse class="p" cx="60" cy="106" rx="31" ry="42"/><ellipse class="p" cx="132" cy="106" rx="31" ry="42"/><ellipse class="g" cx="96" cy="104" rx="36" ry="44"/>
+      <circle class="w" cx="82" cy="98" r="5"/><circle class="w" cx="110" cy="98" r="5"/><path class="gs" d="M96 112v42c0 15-17 16-20 4"/><path class="ps thin" d="M72 123l-12 25M120 123l12 25"/>
+    </g>
+    <g id="owl">
+      <path class="p" d="M50 85l16-29 20 18h20l20-18 16 29v46c0 28-20 44-46 44s-46-16-46-44Z"/>
+      <circle class="w" cx="77" cy="108" r="20"/><circle class="w" cx="115" cy="108" r="20"/><circle class="g" cx="77" cy="108" r="9"/><circle class="g" cx="115" cy="108" r="9"/><path class="g" d="M87 123l9-13 9 13-9 9Z"/><path class="gs thin" d="M65 145l31 17 31-17"/>
+    </g>
+    <g id="cat">
+      <path class="p" d="M53 91l8-36 27 21h16l27-21 8 36v44c0 25-19 40-43 40s-43-15-43-40Z"/>
+      <path class="g" d="M69 104q10-10 20 0-10 7-20 0ZM103 104q10-10 20 0-10 7-20 0Z"/><path class="g" d="M89 121h14l-7 8Z"/>
+      <path class="gs thin" d="M84 132l12 6 12-6M70 126H43M70 136H48M122 126h27M122 136h22"/>
+    </g>
+    <g id="red-panda">
+      <circle class="g" cx="66" cy="76" r="16"/><circle class="g" cx="126" cy="76" r="16"/><ellipse class="p" cx="96" cy="113" rx="45" ry="48"/>
+      <path class="g" d="M61 101q18-25 32 2-18 17-32-2ZM131 101q-18-25-32 2 18 17 32-2Z"/><circle class="w" cx="78" cy="103" r="5"/><circle class="w" cx="114" cy="103" r="5"/>
+      <ellipse class="w" cx="96" cy="132" rx="23" ry="17"/><ellipse class="g" cx="96" cy="126" rx="7" ry="5"/><path class="gs thin" d="M123 144c31-7 42 16 20 27-13 6-23-2-17-12 5-8 16-4 14 3"/><path class="ps thin" d="M132 149l11 5M127 159l11 6"/>
+    </g>
+    <g id="cheetah">
+      <circle class="g" cx="66" cy="77" r="14"/><circle class="g" cx="126" cy="77" r="14"/><path class="p" d="M58 94c0-24 17-37 38-37s38 13 38 37v38c0 27-17 43-38 43s-38-16-38-43Z"/>
+      <circle class="g" cx="80" cy="106" r="5"/><circle class="g" cx="112" cy="106" r="5"/><path class="gs thin" d="M80 112l-7 31M112 112l7 31"/><ellipse class="w" cx="96" cy="137" rx="21" ry="17"/><ellipse class="g" cx="96" cy="129" rx="7" ry="5"/>
+      <g class="g"><circle cx="72" cy="88" r="3"/><circle cx="120" cy="88" r="3"/><circle cx="66" cy="119" r="3"/><circle cx="126" cy="119" r="3"/><circle cx="78" cy="151" r="3"/><circle cx="114" cy="151" r="3"/></g>
+    </g>
+    <g id="deer">
+      <path class="gs" d="M75 79L61 64l-8-20M65 69l-18-4M117 79l14-15 8-20M127 69l18-4"/><path class="p" d="M60 79L39 67l7 27 20 6M132 79l21-12-7 27-20 6"/>
+      <path class="g" d="M68 76c7-13 49-13 56 0l-8 70-20 27-20-27Z"/><circle class="w" cx="81" cy="106" r="5"/><circle class="w" cx="111" cy="106" r="5"/><ellipse class="p" cx="96" cy="140" rx="8" ry="6"/>
+    </g>
+    <g id="dog">
+      <path class="g" d="M56 82L40 54l34 16M136 82l16-28-34 16"/><path class="p" d="M56 82c8-25 72-25 80 0v48c0 28-18 44-40 44s-40-16-40-44Z"/>
+      <path class="w" d="M68 83l16 14 12-21 12 21 16-14v45H68Z" opacity=".8"/><circle class="g" cx="80" cy="112" r="5"/><circle class="g" cx="112" cy="112" r="5"/><ellipse class="g" cx="96" cy="132" rx="9" ry="6"/><path class="gs thin" d="M80 148l16 10 16-10"/>
+    </g>
+    <g id="bee">
+      <ellipse class="p" cx="96" cy="119" rx="32" ry="43"/><ellipse class="gs" cx="66" cy="96" rx="25" ry="17" transform="rotate(-30 66 96)"/><ellipse class="gs" cx="126" cy="96" rx="25" ry="17" transform="rotate(30 126 96)"/>
+      <path class="gs" d="M78 91L65 70M114 91l13-21"/><circle class="g" cx="63" cy="67" r="5"/><circle class="g" cx="129" cy="67" r="5"/><path class="gs" d="M67 111h58M65 128h62M73 145h46"/>
+    </g>
+    <g id="octopus">
+      <path class="p" d="M58 107c0-34 16-52 38-52s38 18 38 52v22H58Z"/><circle class="w" cx="81" cy="101" r="7"/><circle class="w" cx="111" cy="101" r="7"/><circle class="g" cx="81" cy="101" r="3"/><circle class="g" cx="111" cy="101" r="3"/>
+      <path class="ps" d="M63 127c-20 13-18 39 2 35 17-3 3-26 18-29M86 130c-10 23 11 40 20 23 7-14-9-17 1-27M119 130c22 11 22 36 3 34-15-1-7-22-22-28M73 133c4 15 18 20 24 7"/>
+    </g>
+    <g id="orca">
+      <path class="g" d="M38 120c20-44 74-53 118-22l18-12-6 25 13 19-27-2c-31 34-88 31-116-8Z"/><path class="p" d="M66 120c27 18 62 12 83-8-14 33-61 42-89 15Z"/><path class="p" d="M105 83l15-28 8 38Z"/><ellipse class="w" cx="77" cy="103" rx="12" ry="6" transform="rotate(-18 77 103)"/><circle class="p" cx="60" cy="100" r="4"/>
+    </g>
+    <g id="crow">
+      <circle class="g" cx="113" cy="87" r="24"/><path class="g" d="M94 103c-30 2-46 22-44 54h78c10-35-2-49-34-54Z"/><path class="p" d="M137 83l37 11-38 8Z"/><path class="p" d="M70 119c24-14 43 3 47 29-21-19-36-10-47-29Z"/><circle class="w" cx="119" cy="82" r="5"/><path class="gs thin" d="M76 157l-5 17M105 157l5 17"/>
+    </g>
+    <g id="dolphin">
+      <path class="p" d="M35 127c27-44 75-58 123-27l22-5-18 16 13 18-25-8c-28 29-72 36-115 6Z"/><path class="g" d="M96 86l21-27 5 38Z"/><path class="g" d="M82 132l-18 25 34-18Z"/><path class="p" d="M151 105l19-17-3 20Z"/><circle class="g" cx="142" cy="105" r="4"/>
+    </g>
+    <g id="otter">
+      <ellipse class="p" cx="96" cy="123" rx="35" ry="51"/><circle class="p" cx="96" cy="82" r="36"/><circle class="g" cx="70" cy="60" r="11"/><circle class="g" cx="122" cy="60" r="11"/><ellipse class="w" cx="96" cy="94" rx="24" ry="18"/>
+      <circle class="g" cx="82" cy="80" r="5"/><circle class="g" cx="110" cy="80" r="5"/><ellipse class="g" cx="96" cy="91" rx="7" ry="5"/><path class="gs thin" d="M75 94H48M117 94h27M76 103H53M116 103h23"/><path class="gs" d="M67 130l-18 12M125 130l18 12"/>
+    </g>
+    <g id="parrot">
+      <path class="p" d="M59 82c10-27 59-30 73 1 14 32-8 79-36 92-26-14-48-60-37-93Z"/><circle class="w" cx="105" cy="88" r="17"/><circle class="g" cx="105" cy="88" r="7"/><path class="g" d="M122 94l34 13-29 18-14-9Z"/><path class="gs" d="M73 113c24-13 44 1 47 31-24-18-37-8-47-31Z"/><path class="ps thin" d="M80 128l31 24M76 141l23 18"/>
+    </g>
+  </defs>
+
+  <rect width="848" height="848" fill="#fff"/>
+  <g transform="translate(16 16)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ISTJ</text><use href="#beaver"/></g>
+  <g transform="translate(224 16)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ISFJ</text><use href="#penguin"/></g>
+  <g transform="translate(432 16)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">INFJ</text><use href="#elephant"/></g>
+  <g transform="translate(640 16)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">INTJ</text><use href="#owl"/></g>
+  <g transform="translate(16 224)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ISTP</text><use href="#cat"/></g>
+  <g transform="translate(224 224)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ISFP</text><use href="#red-panda"/></g>
+  <g transform="translate(432 224)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">INFP</text><use href="#deer"/></g>
+  <g transform="translate(640 224)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">INTP</text><use href="#octopus"/></g>
+  <g transform="translate(16 432)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ESTP</text><use href="#cheetah"/></g>
+  <g transform="translate(224 432)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ESFP</text><use href="#parrot"/></g>
+  <g transform="translate(432 432)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ENFP</text><use href="#otter"/></g>
+  <g transform="translate(640 432)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ENTP</text><use href="#crow"/></g>
+  <g transform="translate(16 640)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ESTJ</text><use href="#dog"/></g>
+  <g transform="translate(224 640)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ESFJ</text><use href="#bee"/></g>
+  <g transform="translate(432 640)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ENFJ</text><use href="#dolphin"/></g>
+  <g transform="translate(640 640)"><rect class="card" width="192" height="192" rx="16"/><text class="code" x="16" y="31">ENTJ</text><use href="#orca"/></g>
+</svg>
