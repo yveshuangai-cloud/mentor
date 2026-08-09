@@ -22,6 +22,8 @@ interface UseAudioOptions {
   onSpeechStart?: () => void;
   /** 偵測到用戶停止說話 */
   onSpeechEnd?: () => void;
+  /** 某一代回覆的第一批樣本真正進入揚聲器 */
+  onPlaybackStart?: (generation: number) => void;
 }
 
 function resampleMono(input: Float32Array, inputRate: number, outputRate = 16000): Float32Array {
@@ -61,6 +63,9 @@ export function useAudio(options: UseAudioOptions = {}) {
   const pcmBufferRef = useRef<Float32Array[]>([]);
   const pcmReadPosRef = useRef(0);      // 目前讀取到第幾個 sample
   const pcmTotalSamplesRef = useRef(0); // 總共有多少 sample
+  const pcmPlayedSamplesRef = useRef(0);
+  const pendingSegmentGenerationRef = useRef<number | null>(null);
+  const playbackMarkersRef = useRef<Array<{ generation: number; sampleOffset: number }>>([]);
   const isStreamingRef = useRef(false);  // 是否正在串流播放
   // 2026-06-19 Climb 2 — TTS echo gate: 慢慢 TTS 期間 + 400ms 殘響期，不送 mic chunks 給 STT
   // 修「呵呵→黑黑黑」echo 幻聽。local VAD 仍正常跑 → barge-in 仍 work
@@ -376,6 +381,17 @@ export function useAudio(options: UseAudioOptions = {}) {
       }
       pcmReadPosRef.current = readPos;
 
+      if (written > 0) {
+        pcmPlayedSamplesRef.current += written;
+        while (
+          playbackMarkersRef.current.length > 0
+          && playbackMarkersRef.current[0]!.sampleOffset <= pcmPlayedSamplesRef.current
+        ) {
+          const marker = playbackMarkersRef.current.shift()!;
+          options.onPlaybackStart?.(marker.generation);
+        }
+      }
+
       // 如果沒有足夠的 sample，填零（靜音）
       for (let i = written; i < needed; i++) {
         output[i] = 0;
@@ -440,6 +456,13 @@ export function useAudio(options: UseAudioOptions = {}) {
           newPCM[i] = channelData[prevDecoded + i]!;
         }
 
+        if (pendingSegmentGenerationRef.current != null) {
+          playbackMarkersRef.current.push({
+            generation: pendingSegmentGenerationRef.current,
+            sampleOffset: pcmTotalSamplesRef.current,
+          });
+          pendingSegmentGenerationRef.current = null;
+        }
         pcmBufferRef.current.push(newPCM);
         pcmTotalSamplesRef.current += newSamples;
         decodedSamplesRef.current = totalDecodedSamples;
@@ -487,6 +510,10 @@ export function useAudio(options: UseAudioOptions = {}) {
     }
   }, []);
 
+  const beginAudioSegment = useCallback((generation: number) => {
+    pendingSegmentGenerationRef.current = generation;
+  }, []);
+
   /**
    * Flush buffer（audio:done 時呼叫 — 所有 MP3 都收到了）
    */
@@ -526,6 +553,9 @@ export function useAudio(options: UseAudioOptions = {}) {
     pcmBufferRef.current = [];
     pcmReadPosRef.current = 0;
     pcmTotalSamplesRef.current = 0;
+    pcmPlayedSamplesRef.current = 0;
+    pendingSegmentGenerationRef.current = null;
+    playbackMarkersRef.current = [];
     isStreamingRef.current = false;
     isDecodingRef.current = false;
     pendingDecodeRef.current = false;
@@ -756,6 +786,7 @@ export function useAudio(options: UseAudioOptions = {}) {
     toggleMute,
     toggleSpeaker,
     playAudioChunk,
+    beginAudioSegment,
     stopPlayback,
     fadeOutPlayback,
     flushBuffer: (forceAll?: boolean) => flushMp3Buffer(forceAll),

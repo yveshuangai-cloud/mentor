@@ -14,6 +14,7 @@ export default function App() {
 
   const audio = useAudio({
     onAudioChunk: (chunk) => ws.sendAudioChunk(chunk),
+    onPlaybackStart: (generation) => ws.sendPlaybackStarted(generation),
     onSpeechStart: () => {
       if (ws.felicityStateRef.current === 'speaking') {
         ws.sendInterrupt();
@@ -32,6 +33,7 @@ export default function App() {
       audio.stopFiller();
       audio.playAudioChunk(data);
     },
+    onAudioSegment: (generation) => audio.beginAudioSegment(generation),
     onAudioDone: () => audio.flushBuffer(true),
     onAudioClear: () => audio.stopPlayback(),
     onAudioFadeout: () => audio.fadeOutPlayback(),

@@ -5,11 +5,16 @@ import { config } from '../config.js'
 import { platformQuery } from '../db/index.js'
 import { forTenant } from '../db/tenantDb.js'
 import { processMessage } from '../modules/brain.js'
-import { sanitizeConversationalText } from '../modules/conversationStyle.js'
 import { extractAndLearn } from '../modules/memory/learner.js'
 import { chargeGate, InsufficientPointsError } from '../modules/points.js'
 import { resolveMembership, upsertUser } from '../modules/tenancy.js'
-import { synthesize, voiceConfigured } from '../modules/voice.js'
+import {
+  clampVoiceCallReply,
+  planVoiceCallSegments,
+  streamSynthesize,
+  voiceConfigured,
+  type VoiceClip,
+} from '../modules/voice.js'
 import { issueVoiceToken, verifyLiffIdToken, verifyVoiceToken } from '../modules/voiceCall/auth.js'
 import { DeepgramStream } from '../modules/voiceCall/deepgram.js'
 import { VoiceGeneration } from '../modules/voiceCall/generation.js'
@@ -18,18 +23,6 @@ type VoiceState = 'listening' | 'hearing' | 'thinking' | 'speaking' | 'interrupt
 
 function sendJson(socket: WebSocket, value: unknown): void {
   if (socket.readyState === 1) socket.send(JSON.stringify(value))
-}
-
-function shortSpokenReply(reply: string): string {
-  const clean = sanitizeConversationalText(reply)
-    .replace(/https?:\/\/\S+/gi, '')
-    .replace(/[\*#`_~-]+/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-  if (clean.length <= 260) return clean
-  const window = clean.slice(0, 260)
-  const lastStop = Math.max(window.lastIndexOf('。'), window.lastIndexOf('！'), window.lastIndexOf('？'))
-  return (lastStop >= 40 ? window.slice(0, lastStop + 1) : window).trim()
 }
 
 export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
@@ -111,6 +104,10 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
     let finalParts: string[] = []
     let activeTurns = 0
     const generations = new VoiceGeneration()
+    const activeControllers = new Set<AbortController>()
+    const turnStartedAt = new Map<number, number>()
+    const firstAudioSentAt = new Map<number, number>()
+    let sttStartedAt: number | null = null
     const pendingMessages: Array<{ raw: Buffer; isBinary: boolean }> = []
     let handleMessage: ((raw: Buffer, isBinary: boolean) => void) | null = null
 
@@ -142,16 +139,87 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
 
       const status = (state: VoiceState) => sendJson(socket, { type: 'status', state })
 
-      const respond = async (transcript: string): Promise<void> => {
+      const logLatency = (generation: number, stage: string, latencyMs: number, stageMs?: number) => {
+        request.log.info({
+          event: 'voice_latency',
+          stage,
+          generation,
+          sessionId: tokenPayload.sid,
+          latencyMs,
+          ...(stageMs == null ? {} : { stageMs }),
+        }, `voice latency: ${stage}`)
+      }
+
+      const respond = async (transcript: string, sttFinalAt: number): Promise<void> => {
         if (activeTurns >= 2) return
         activeTurns += 1
         const generation = generations.next()
+        const controller = new AbortController()
+        activeControllers.add(controller)
+        turnStartedAt.set(generation, sttFinalAt)
         status('thinking')
         try {
           const charge = await chargeGate(tenant.id, 'voice', {
             refType: 'voice_call',
             refId: tokenPayload.sid,
           })
+          let firstSentence = ''
+          let firstSegmentTask: Promise<void> | null = null
+          let firstSegmentError: Error | null = null
+          let ttsStartedAt: number | null = null
+          let totalAudioDurationMs = 0
+
+          const sendSegment = async (clip: VoiceClip, segmentIndex: number): Promise<void> => {
+            if (!generations.isCurrent(generation) || closed || controller.signal.aborted) return
+            const segmentStartedAt = Date.now()
+            ttsStartedAt ??= segmentStartedAt
+            let announced = false
+            const result = await streamSynthesize(clip, {
+              signal: controller.signal,
+              onFirstAudioChunk: ({ traceId, profile }) => {
+                if (!generations.isCurrent(generation) || closed) return
+                const now = Date.now()
+                if (!firstAudioSentAt.has(generation)) {
+                  firstAudioSentAt.set(generation, now)
+                  logLatency(generation, 'tts_first_audio', now - sttFinalAt, now - (ttsStartedAt ?? now))
+                }
+                request.log.info({
+                  event: 'voice_segment',
+                  sessionId: tokenPayload.sid,
+                  generation,
+                  segmentIndex,
+                  model: 'speech-2.8-hd',
+                  emotion: profile.emotion,
+                  style: profile.style,
+                  speed: profile.speed,
+                  pitch: profile.pitch,
+                  traceId,
+                }, 'voice segment started')
+              },
+              onAudioChunk: (chunk) => {
+                if (!generations.isCurrent(generation) || closed || controller.signal.aborted) return
+                if (!announced) {
+                  announced = true
+                  sendJson(socket, { type: 'audio:segment', generation, segmentIndex })
+                  status('speaking')
+                }
+                socket.send(chunk, { binary: true })
+              },
+            })
+            totalAudioDurationMs += result.durationMs
+          }
+
+          const startFirstSentence = (sentence: string) => {
+            if (firstSegmentTask || controller.signal.aborted || !generations.isCurrent(generation)) return
+            const clip = planVoiceCallSegments(sentence, 90)[0]
+            if (!clip) return
+            firstSentence = clip.text
+            firstSegmentTask = sendSegment(clip, 0).catch((error) => {
+              firstSegmentError = error as Error
+            })
+          }
+
+          let llmFirstTokenLogged = false
           const output = await processMessage({
             tenant,
             user,
@@ -159,15 +227,33 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
             message: transcript,
             semanticQuery: transcript,
             voiceCall: true,
+            signal: controller.signal,
+            onLlmFirstToken: () => {
+              if (llmFirstTokenLogged) return
+              llmFirstTokenLogged = true
+              logLatency(generation, 'llm_first_token', Date.now() - sttFinalAt)
+            },
+            onVoiceSentence: startFirstSentence,
           })
-          const spoken = shortSpokenReply(output.reply)
+          const spoken = clampVoiceCallReply(output.reply, 90)
           if (!spoken || !generations.isCurrent(generation) || closed) return
 
-          const audio = await synthesize({ text: spoken })
-          if (!generations.isCurrent(generation) || closed) return
-          status('speaking')
-          socket.send(audio.mp3, { binary: true })
-          sendJson(socket, { type: 'audio:done', generation, durationMs: audio.durationMs })
+          if (!firstSegmentTask) {
+            const segments = planVoiceCallSegments(spoken, 90)
+            for (let index = 0; index < segments.length; index += 1) {
+              await sendSegment(segments[index]!, index)
+            }
+          } else {
+            await firstSegmentTask
+            if (firstSegmentError) throw firstSegmentError
+            const remaining = spoken.startsWith(firstSentence)
+              ? spoken.slice(firstSentence.length).trim()
+              : spoken.replace(/^.*?[。！？!?]/s, '').trim()
+          const second = planVoiceCallSegments(remaining, Math.max(1, 90 - firstSentence.length))[0]
+            if (second) await sendSegment(second, 1)
+          }
+          if (!generations.isCurrent(generation) || closed || controller.signal.aborted) return
+          sendJson(socket, { type: 'audio:done', generation, durationMs: totalAudioDurationMs })
 
           const conv = await db.query<{ id: number }>(
             `INSERT INTO conversations
@@ -191,12 +277,14 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
             [tokenPayload.sid],
           )
         } catch (error) {
+          if (controller.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) return
           request.log.error({ err: error, sessionId: tokenPayload.sid }, 'voice turn failed')
           const message = error instanceof InsufficientPointsError
             ? '目前點數不足，暫時無法繼續通話。'
             : '剛剛訊號有點不穩，請再說一次。'
           sendJson(socket, { type: 'error', message })
         } finally {
+          activeControllers.delete(controller)
           activeTurns -= 1
           if (!closed && generations.isCurrent(generation)) status('listening')
         }
@@ -206,6 +294,7 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
         onOpen: () => request.log.info({ sessionId: tokenPayload.sid }, 'Deepgram stream connected'),
         onError: (error) => request.log.error({ err: error, sessionId: tokenPayload.sid }, 'Deepgram stream error'),
         onTranscript: ({ text, isFinal, speechFinal }) => {
+          sttStartedAt ??= Date.now()
           if (!isFinal) {
             status('hearing')
             return
@@ -214,7 +303,18 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
           if (!speechFinal) return
           const utterance = finalParts.join(' ').trim()
           finalParts = []
-          if (utterance) void respond(utterance)
+          if (utterance) {
+            const sttFinalAt = Date.now()
+            const observedMs = sttStartedAt == null ? 0 : sttFinalAt - sttStartedAt
+            request.log.info({
+              event: 'voice_latency',
+              stage: 'stt_final',
+              sessionId: tokenPayload.sid,
+              latencyMs: observedMs,
+            }, 'voice latency: stt_final')
+            sttStartedAt = null
+            void respond(utterance, sttFinalAt)
+          }
         },
       })
 
@@ -233,7 +333,7 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
           }
           return
         }
-        let message: { type?: string }
+        let message: { type?: string; generation?: number }
         try {
           message = JSON.parse(raw.toString()) as { type?: string }
         } catch {
@@ -256,12 +356,23 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
             request.log.error({ err: error }, 'voice recognition start failed')
           }
         } else if (message.type === 'audio:interrupt') {
+          for (const controller of activeControllers) controller.abort()
           generations.cancel()
           finalParts = []
           sendJson(socket, { type: 'audio:fadeout' })
           sendJson(socket, { type: 'audio:clear' })
           status('interrupting')
           status('listening')
+        } else if (message.type === 'telemetry:playback-start' && Number.isInteger(message.generation)) {
+          const generation = message.generation!
+          const startedAt = turnStartedAt.get(generation)
+          const sentAt = firstAudioSentAt.get(generation)
+          if (startedAt != null) {
+            const now = Date.now()
+            logLatency(generation, 'playback_start', now - startedAt, sentAt == null ? undefined : now - sentAt)
+            turnStartedAt.delete(generation)
+            firstAudioSentAt.delete(generation)
+          }
         } else if (message.type === 'call:end') {
           sendJson(socket, { type: 'call:ended' })
           socket.close(1000, 'caller_hangup')
@@ -272,6 +383,8 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
       const closeSession = async (reason: string): Promise<void> => {
         if (closed) return
         closed = true
+        for (const controller of activeControllers) controller.abort()
+        activeControllers.clear()
         generations.cancel()
         deepgram?.close()
         const summary = {

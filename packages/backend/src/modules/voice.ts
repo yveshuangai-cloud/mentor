@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Storage } from '@google-cloud/storage'
+import WebSocket from 'ws'
 import { config } from '../config.js'
 import { sanitizeConversationalText } from './conversationStyle.js'
 
@@ -134,6 +135,53 @@ function splitEmotionalTurns(clip: VoiceClip): VoiceClip[] {
   return [clip]
 }
 
+/** Keep live-call speech human-sized. Prefer a natural stop between 60 and 90 characters. */
+export function clampVoiceCallReply(input: string, maxChars = 90): string {
+  const clean = sanitizeConversationalText(input)
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/[\*#`_~-]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (clean.length <= maxChars) return clean
+
+  const window = clean.slice(0, maxChars + 1)
+  const naturalStops = [...window.matchAll(/[。！？!?]/g)]
+    .map((match) => (match.index ?? -1) + 1)
+    .filter((index) => index >= 60 && index <= maxChars)
+  const softStops = [...window.matchAll(/[，,；;]/g)]
+    .map((match) => (match.index ?? -1) + 1)
+    .filter((index) => index >= 60 && index <= maxChars)
+  const end = naturalStops.at(-1) ?? softStops.at(-1) ?? maxChars
+  return clean.slice(0, end).trim()
+}
+
+/** Plan at most two independently directed emotional segments for a live call. */
+export function planVoiceCallSegments(input: string, maxChars = 90): VoiceClip[] {
+  const text = clampVoiceCallReply(input, maxChars)
+  if (!text) return []
+  const normalized = normalizeInterjections(text)
+  const base: VoiceClip = { text: normalized.text, emotion: normalized.emotion }
+  return splitEmotionalTurns(base).slice(0, 2).map((clip) => {
+    const profile = resolveVoiceProfile(clip)
+    return {
+      ...clip,
+      emotion: clip.emotion ?? profile.emotion,
+      style: clip.style ?? profile.style,
+    }
+  })
+}
+
+export function resolveLiveVoiceProfile(clip: VoiceClip): VoiceProfile {
+  const profile = resolveVoiceProfile(clip)
+  const liveSpeed: Record<VoiceStyle, number> = {
+    conversation: 1.08,
+    news: 1.1,
+    comfort: 1.05,
+    encourage: 1.08,
+  }
+  return { ...profile, speed: liveSpeed[profile.style] }
+}
+
 export interface ExtractedVoice {
   cleanText: string // 拿掉語音標籤後、給文字訊息用的回覆
   clips: VoiceClip[]
@@ -259,6 +307,138 @@ export async function synthesize(clip: VoiceClip): Promise<{ mp3: Buffer; durati
     mp3: Buffer.from(data.data.audio, 'hex'),
     durationMs: data.extra_info?.audio_length ?? 0,
   }
+}
+
+export interface StreamSynthesizeOptions {
+  signal?: AbortSignal
+  onAudioChunk: (chunk: Buffer) => void
+  onFirstAudioChunk?: (metadata: { traceId: string | null; profile: VoiceProfile }) => void
+}
+
+/** MiniMax's native WebSocket T2A: audio reaches the caller while it is still being generated. */
+export async function streamSynthesize(
+  clip: VoiceClip,
+  options: StreamSynthesizeOptions,
+): Promise<{ durationMs: number; traceId: string | null; profile: VoiceProfile }> {
+  const profile = resolveLiveVoiceProfile(clip)
+  const groupQuery = config.minimaxGroupId
+    ? `?GroupId=${encodeURIComponent(config.minimaxGroupId)}`
+    : ''
+
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(`wss://api.minimax.io/ws/v1/t2a_v2${groupQuery}`, {
+      headers: { Authorization: `Bearer ${config.minimaxApiKey}` },
+    })
+    let settled = false
+    let taskStarted = false
+    let firstAudio = false
+    let durationMs = 0
+    let traceId: string | null = null
+
+    const finish = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(connectTimeout)
+      options.signal?.removeEventListener('abort', abort)
+      if (socket.readyState === WebSocket.OPEN) socket.close(1000, 'complete')
+      logTts('INFO', {
+        transport: 'websocket',
+        model: MINIMAX_TTS_MODEL,
+        emotion: profile.emotion,
+        style: profile.style,
+        speed: profile.speed,
+        pitch: profile.pitch,
+        traceId,
+        durationMs,
+        interjections: clip.text.match(/\((?:laughs|chuckle|breath|inhale|exhale|gasps|sighs)\)/g) ?? [],
+      })
+      resolve({ durationMs, traceId, profile })
+    }
+    const fail = (error: Error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(connectTimeout)
+      options.signal?.removeEventListener('abort', abort)
+      socket.close()
+      logTts('ERROR', {
+        transport: 'websocket',
+        model: MINIMAX_TTS_MODEL,
+        emotion: profile.emotion,
+        style: profile.style,
+        speed: profile.speed,
+        pitch: profile.pitch,
+        traceId,
+        error: error.message,
+      })
+      reject(error)
+    }
+    const abort = () => fail(new DOMException('Voice generation aborted', 'AbortError'))
+    const connectTimeout = setTimeout(() => fail(new Error('MiniMax WebSocket connection timeout')), 12_000)
+    options.signal?.addEventListener('abort', abort, { once: true })
+    if (options.signal?.aborted) return abort()
+
+    socket.on('message', (raw) => {
+      try {
+        const message = JSON.parse(raw.toString()) as {
+          event?: string
+          data?: { audio?: string }
+          extra_info?: { audio_length?: number }
+          is_final?: boolean
+          trace_id?: string
+          base_resp?: { status_code?: number; status_msg?: string }
+        }
+        traceId = message.trace_id ?? traceId
+        if (message.base_resp?.status_code && message.base_resp.status_code !== 0) {
+          fail(new Error(`MiniMax TTS ${message.base_resp.status_code}: ${message.base_resp.status_msg ?? 'unknown'}`))
+          return
+        }
+        if (message.event === 'connected_success') {
+          socket.send(JSON.stringify({
+            event: 'task_start',
+            model: MINIMAX_TTS_MODEL,
+            language_boost: 'Chinese',
+            voice_setting: {
+              voice_id: config.minimaxVoiceId,
+              speed: profile.speed,
+              vol: 1,
+              pitch: profile.pitch,
+              emotion: profile.emotion,
+            },
+            audio_setting: { format: 'mp3', sample_rate: 32000, bitrate: 128000, channel: 1 },
+          }))
+          return
+        }
+        if (message.event === 'task_started' && !taskStarted) {
+          taskStarted = true
+          socket.send(JSON.stringify({ event: 'task_continue', text: clip.text }))
+          return
+        }
+        if (message.data?.audio) {
+          const chunk = Buffer.from(message.data.audio, 'hex')
+          if (chunk.length) {
+            if (!firstAudio) {
+              firstAudio = true
+              options.onFirstAudioChunk?.({ traceId, profile })
+            }
+            options.onAudioChunk(chunk)
+          }
+        }
+        durationMs = message.extra_info?.audio_length ?? durationMs
+        if (message.is_final) {
+          socket.send(JSON.stringify({ event: 'task_finish' }))
+          finish()
+        } else if (message.event === 'task_failed') {
+          fail(new Error(`MiniMax TTS task failed: ${message.base_resp?.status_msg ?? 'unknown'}`))
+        }
+      } catch (error) {
+        fail(error as Error)
+      }
+    })
+    socket.on('error', (error) => fail(error))
+    socket.on('close', () => {
+      if (!settled) fail(new Error('MiniMax WebSocket closed before audio completed'))
+    })
+  })
 }
 
 // ── ffmpeg 轉檔（音訊格式互轉、圖片縮圖）─────────────────────

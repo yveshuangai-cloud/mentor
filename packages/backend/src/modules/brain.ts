@@ -10,7 +10,7 @@ import { loadNightSoulBlock } from './proactive/nightlife.js'
 import { buildTruthCorrection } from './mirror.js'
 import { buildReadingBlock } from './proactive/reading.js'
 import { getCharacterForTenant } from './characters.js'
-import { CONVERSATION_STYLE_PROMPT } from './conversationStyle.js'
+import { CONVERSATION_STYLE_PROMPT, sanitizeConversationalText } from './conversationStyle.js'
 import { AUTHORIZED_UPGRADE_PROMPT } from './upgrades.js'
 import { DOCUMENT_SAFETY_PROMPT, loadRecentDocumentContext } from './documents.js'
 import {
@@ -44,6 +44,9 @@ export interface BrainInput {
   preferVoice?: boolean
   voiceCall?: boolean
   attachment?: BrainAttachment
+  signal?: AbortSignal
+  onLlmFirstToken?: () => void
+  onVoiceSentence?: (sentence: string) => void
 }
 
 export interface BrainOutput {
@@ -59,8 +62,36 @@ type ContentBlock =
   | { type: 'document'; source: { type: 'base64'; media_type: string; data: string } }
 
 export async function processMessage(input: BrainInput): Promise<BrainOutput> {
-  const { tenant, user, message, semanticQuery, preferVoice, voiceCall, attachment } = input
+  const {
+    tenant,
+    user,
+    message,
+    semanticQuery,
+    preferVoice,
+    voiceCall,
+    attachment,
+    signal,
+    onLlmFirstToken,
+    onVoiceSentence,
+  } = input
   const db = forTenant(tenant.id)
+  let llmFirstTokenEmitted = false
+  let voiceSentenceEmitted = false
+
+  const observeStreamText = (fullText: string, delta: string) => {
+    if (delta && !llmFirstTokenEmitted) {
+      llmFirstTokenEmitted = true
+      onLlmFirstToken?.()
+    }
+    if (!voiceCall || voiceSentenceEmitted || !onVoiceSentence) return
+    const trimmed = fullText.trimStart()
+    if (/^\[(?:WEB_SEARCH|SEARCH_WEB)\b/i.test(trimmed)) return
+    const visible = sanitizeConversationalText(stripVoiceMarkers(trimmed))
+    const match = visible.match(/^(.{8,90}?[。！？!?])/s)
+    if (!match?.[1]) return
+    voiceSentenceEmitted = true
+    onVoiceSentence(match[1].trim())
+  }
 
   const character = await getCharacterForTenant(tenant)
   const [soul, biography, memory, semanticBlock, recentDocumentBlock, promisesBlock, nightSoul, truthCorrection, readingBlock, historyRes] = await Promise.all([
@@ -121,7 +152,8 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     voiceCall
       ? `# 即時語音通話
 你正在和使用者即時通話。回答要像真人說話，不使用 Markdown、條列、星號、井號或網址。
-每次只回答二到三句，通常不超過 100 個中文字；先直接回應，再自然地問一句是否要繼續。
+每次只回答一到三句，整段嚴格控制在 60 到 90 個中文字。第一句先直接回應重點並用完整標點結束，再視需要補充一句。
+句子要短而自然，避免超過 35 字才出現第一個句號；不要為了湊字數重複內容。
 不要朗讀「情緒標籤」或系統標記。若需要網路資料，可以使用既有搜尋能力後再簡短口述結果。`
       : '',
     CONVERSATION_STYLE_PROMPT,
@@ -178,6 +210,7 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
   ): Promise<ApiResponse> => {
     const res = await fetch(`${apiBase}/v1/messages`, {
       method: 'POST',
+      signal,
       headers: useBridge
         ? { 'content-type': 'application/json', authorization: `Bearer ${config.bridgeSecret}` }
         : {
@@ -188,6 +221,7 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
       body: JSON.stringify({
         model: config.brainModel,
         max_tokens: maxTokens,
+        stream: Boolean(voiceCall),
         system: useBridge
           ? `${system}${extraSystem}`
           : [{ type: 'text', text: `${system}${extraSystem}`, cache_control: { type: 'ephemeral' } }],
@@ -198,7 +232,67 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
       const body = await res.text().catch(() => '')
       throw new Error(`Anthropic API HTTP ${res.status}: ${body.slice(0, 300)}`)
     }
-    return (await res.json()) as ApiResponse
+    if (!voiceCall || !res.body || !res.headers.get('content-type')?.includes('text/event-stream')) {
+      return (await res.json()) as ApiResponse
+    }
+
+    let text = ''
+    let inputTokens = 0
+    let outputTokens = 0
+    let stopReason: string | null = null
+    let buffer = ''
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+
+    const consumeEvent = (block: string) => {
+      for (const line of block.split('\n')) {
+        if (!line.startsWith('data:')) continue
+        const payload = line.slice(5).trim()
+        if (!payload || payload === '[DONE]') continue
+        const event = JSON.parse(payload) as {
+          type?: string
+          delta?: { type?: string; text?: string; stop_reason?: string }
+          message?: { usage?: { input_tokens?: number; output_tokens?: number } }
+          usage?: { input_tokens?: number; output_tokens?: number }
+        }
+        if (event.type === 'message_start') {
+          inputTokens = event.message?.usage?.input_tokens ?? inputTokens
+        } else if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+          const delta = event.delta.text ?? ''
+          text += delta
+          observeStreamText(text, delta)
+        } else if (event.type === 'message_delta') {
+          stopReason = event.delta?.stop_reason ?? stopReason
+          outputTokens = event.usage?.output_tokens ?? outputTokens
+        }
+      }
+    }
+
+    while (true) {
+      const { done, value } = await reader.read()
+      buffer += decoder.decode(value, { stream: !done })
+      buffer = buffer.replace(/\r\n/g, '\n')
+      let boundary = buffer.indexOf('\n\n')
+      while (boundary >= 0) {
+        consumeEvent(buffer.slice(0, boundary))
+        buffer = buffer.slice(boundary + 2)
+        boundary = buffer.indexOf('\n\n')
+      }
+      if (done) break
+    }
+    if (buffer.trim()) consumeEvent(buffer)
+    if (text && !voiceSentenceEmitted && onVoiceSentence && !/^\[(?:WEB_SEARCH|SEARCH_WEB)\b/i.test(text.trimStart())) {
+      const visible = sanitizeConversationalText(stripVoiceMarkers(text))
+      if (visible) {
+        voiceSentenceEmitted = true
+        onVoiceSentence(visible)
+      }
+    }
+    return {
+      content: text ? [{ type: 'text', text }] : [],
+      usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+      stop_reason: stopReason,
+    }
   }
 
   const textOf = (data: ApiResponse) => data.content

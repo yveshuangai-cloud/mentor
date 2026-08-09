@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  clampVoiceCallReply,
   ensurePreferredVoice,
   extractVoiceTags,
   MINIMAX_TTS_MODEL,
+  planVoiceCallSegments,
+  resolveLiveVoiceProfile,
   resolveVoiceProfile,
 } from '../src/modules/voice.js'
 
@@ -72,6 +75,31 @@ describe('resolveVoiceProfile', () => {
 
   it('uses MiniMax speech 2.8 HD', () => {
     expect(MINIMAX_TTS_MODEL).toBe('speech-2.8-hd')
+  })
+})
+
+describe('live voice calls', () => {
+  it('hard-limits spoken replies to 90 characters at a natural stop', () => {
+    const input = `${'這是一段需要簡短口述的內容，'.repeat(8)}最後一句。`
+    const result = clampVoiceCallReply(input)
+    expect(result.length).toBeLessThanOrEqual(90)
+    expect(result).toMatch(/[，。]$/)
+  })
+
+  it('uses faster live-call pacing without changing recorded voice defaults', () => {
+    expect(resolveLiveVoiceProfile({ text: '我們先從最重要的地方開始。' })).toMatchObject({
+      emotion: 'calm', style: 'conversation', speed: 1.08,
+    })
+    expect(resolveLiveVoiceProfile({ text: '這是今天的 AI 新聞。' })).toMatchObject({
+      style: 'news', speed: 1.1,
+    })
+  })
+
+  it('splits one emotional turn into at most two live segments', () => {
+    const segments = planVoiceCallSegments('我知道你今天真的很難過。可是我相信你一定做得到！後面我們再一起慢慢處理。')
+    expect(segments).toHaveLength(2)
+    expect(segments[0]).toMatchObject({ emotion: 'sad', style: 'comfort' })
+    expect(segments[1]).toMatchObject({ emotion: 'happy', style: 'encourage' })
   })
 })
 

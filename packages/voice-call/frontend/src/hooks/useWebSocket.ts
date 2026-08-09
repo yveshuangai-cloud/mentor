@@ -20,12 +20,13 @@ export type CallStatus = 'idle' | 'connecting' | 'ringing' | 'active' | 'ended' 
 export type FelicityState = 'listening' | 'hearing' | 'thinking' | 'speaking' | 'interrupting';
 
 interface ServerMessage {
-  type: 'call:ready' | 'audio:stream' | 'audio:done' | 'audio:clear' | 'audio:fadeout' | 'status' | 'error' | 'call:ended' | 'filler' | 'fx:tool' | 'location:request';
+  type: 'call:ready' | 'audio:segment' | 'audio:stream' | 'audio:done' | 'audio:clear' | 'audio:fadeout' | 'status' | 'error' | 'call:ended' | 'filler' | 'fx:tool' | 'location:request';
   greeting?: string;
   data?: string;       // base64 encoded audio
   state?: FelicityState;
   message?: string;
   index?: number;      // filler 音訊索引 (0-4)
+  generation?: number;
   // fx:tool 事件用
   tool?: string;       // tool 名稱（search_memory / verify_my_memory / web_search 等）
   phase?: 'start' | 'done';
@@ -38,6 +39,8 @@ interface UseWebSocketOptions {
   url?: string;
   /** 收到 AI 音訊串流 */
   onAudioStream?: (audioData: ArrayBuffer) => void;
+  /** 新的語音段落即將開始，用來標記實際播放首包 */
+  onAudioSegment?: (generation: number) => void;
   /** AI 說完一段話了 */
   onAudioDone?: () => void;
   /** 🔧 強制清空音訊 buffer（投機 TTS 被取消時用，防止殘留音訊重疊） */
@@ -134,6 +137,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
             options.onReady?.(msg.greeting || '');
             break;
 
+          case 'audio:segment':
+            if (Number.isInteger(msg.generation)) options.onAudioSegment?.(msg.generation!);
+            break;
+
           case 'audio:stream':
             // base64 encoded audio fallback
             if (msg.data) {
@@ -226,6 +233,13 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     }
   }, []);
 
+  const sendPlaybackStarted = useCallback((generation: number) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'telemetry:playback-start', generation }));
+    }
+  }, []);
+
   // 掛斷
   const hangUp = useCallback(() => {
     const ws = wsRef.current;
@@ -255,6 +269,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     connect,
     sendAudioChunk,
     sendInterrupt,
+    sendPlaybackStarted,
     hangUp,
   };
 }
