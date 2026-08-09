@@ -68,6 +68,9 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
     let sessionStarted = false
     let sessionStarting = false
     let closed = false
+    let audioChunks = 0
+    let audioBytes = 0
+    const websocketStartedAt = Date.now()
     let finalParts: string[] = []
     let activeTurns = 0
     const generations = new VoiceGeneration()
@@ -180,7 +183,17 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
 
       handleMessage = (raw, isBinary) => {
         if (isBinary) {
-          if (sessionStarted) deepgram?.sendAudio(raw)
+          if (sessionStarted) {
+            audioChunks += 1
+            audioBytes += raw.byteLength
+            if (audioChunks === 1) {
+              request.log.info(
+                { sessionId: tokenPayload.sid, bytes: raw.byteLength },
+                'first microphone audio chunk received',
+              )
+            }
+            deepgram?.sendAudio(raw)
+          }
           return
         }
         let message: { type?: string }
@@ -224,6 +237,15 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
         closed = true
         generations.cancel()
         deepgram?.close()
+        const summary = {
+          sessionId: tokenPayload.sid,
+          audioChunks,
+          audioBytes,
+          durationMs: Date.now() - websocketStartedAt,
+          reason,
+        }
+        if (audioChunks === 0) request.log.warn(summary, 'voice session closed without microphone audio')
+        else request.log.info(summary, 'voice session audio summary')
         await db.query(
           `UPDATE voice_call_sessions
            SET status = 'ended', ended_at = now(), close_reason = $3, updated_at = now()

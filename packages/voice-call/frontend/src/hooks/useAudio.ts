@@ -24,6 +24,21 @@ interface UseAudioOptions {
   onSpeechEnd?: () => void;
 }
 
+function resampleMono(input: Float32Array, inputRate: number, outputRate = 16000): Float32Array {
+  if (inputRate === outputRate) return input;
+  const ratio = inputRate / outputRate;
+  const outputLength = Math.max(1, Math.floor(input.length / ratio));
+  const output = new Float32Array(outputLength);
+  for (let i = 0; i < outputLength; i++) {
+    const position = i * ratio;
+    const left = Math.floor(position);
+    const right = Math.min(input.length - 1, left + 1);
+    const fraction = position - left;
+    output[i] = input[left]! * (1 - fraction) + input[right]! * fraction;
+  }
+  return output;
+}
+
 export function useAudio(options: UseAudioOptions = {}) {
   const [micActive, setMicActive] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
@@ -214,10 +229,12 @@ export function useAudio(options: UseAudioOptions = {}) {
         const isAISpeakingNow = pcmHasData || Date.now() < aiTailMuteUntilRef.current;
         if (isAISpeakingNow) return;
 
-        // Float32 → Int16 PCM
-        const pcm = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-          const s = Math.max(-1, Math.min(1, inputData[i]!));
+        // Browsers commonly ignore the requested 16 kHz and run at 44.1/48 kHz.
+        // Deepgram is configured for 16 kHz, so resample using the actual context rate.
+        const resampled = resampleMono(inputData, ctx.sampleRate, 16000);
+        const pcm = new Int16Array(resampled.length);
+        for (let i = 0; i < resampled.length; i++) {
+          const s = Math.max(-1, Math.min(1, resampled[i]!));
           pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
         }
 
@@ -227,11 +244,15 @@ export function useAudio(options: UseAudioOptions = {}) {
       source.connect(processor);
       processor.connect(ctx.destination);
 
+      if (ctx.state === 'suspended') await ctx.resume();
+      if (ctx.state !== 'running') throw new Error('麥克風尚未啟動，請再點一次允許。');
+
       setMicActive(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : '無法取得麥克風';
       setMicError(msg);
       console.error('麥克風錯誤:', err);
+      throw err;
     }
   }, [options]);
 

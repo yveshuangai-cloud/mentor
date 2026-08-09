@@ -21,8 +21,8 @@ export default function MicPermission({ onAllow, onDeny }: MicPermissionProps) {
       <div className="relative mb-8">
         <div className="w-24 h-24 rounded-full overflow-hidden ring-2 ring-white/10">
           <img
-            src="/avatar.png"
-            alt="avatar"
+            src="/avatar.jpg"
+            alt="饅頭"
             className="w-full h-full object-cover"
           />
         </div>
@@ -37,7 +37,7 @@ export default function MicPermission({ onAllow, onDeny }: MicPermissionProps) {
 
       {/* 標題 */}
       <p className="text-[19px] text-white font-medium text-center leading-relaxed">
-        允許聽到你的聲音嗎？
+        讓饅頭聽見你的聲音嗎？
       </p>
 
       {/* 說明小字 */}

@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { closeLiff, createVoiceSession, getLiffProfile, initLiff, type LiffProfile } from './lib/liff';
 import { useAudio } from './hooks/useAudio';
 import { useWebSocket } from './hooks/useWebSocket';
 import CallScreen from './components/CallScreen';
 import DialTone from './components/DialTone';
+import MicPermission from './components/MicPermission';
 
 export default function App() {
   const [profile, setProfile] = useState<LiffProfile | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
-  const startedRef = useRef(false);
+  const [micConsent, setMicConsent] = useState(false);
+  const [starting, setStarting] = useState(false);
 
   const audio = useAudio({
     onAudioChunk: (chunk) => ws.sendAudioChunk(chunk),
@@ -22,8 +24,7 @@ export default function App() {
   });
 
   const ws = useWebSocket({
-    onReady: async () => {
-      await audio.startMic();
+    onReady: () => {
       audio.warmUpPlayback();
       audio.preloadFillers();
     },
@@ -58,14 +59,24 @@ export default function App() {
     })();
   }, []);
 
-  useEffect(() => {
-    if (!profile || startedRef.current) return;
-    startedRef.current = true;
-    void connect().catch((error) => {
-      startedRef.current = false;
-      setInitError(error instanceof Error ? error.message : '無法建立通話。');
-    });
-  }, [connect, profile]);
+  const beginCall = useCallback(async () => {
+    if (starting) return;
+    setStarting(true);
+    setInitError(null);
+    try {
+      // Must happen inside the user's click gesture. LINE WebView may otherwise
+      // leave AudioContext suspended even though getUserMedia was granted.
+      await audio.startMic();
+      setMicConsent(true);
+      await connect();
+    } catch (error) {
+      audio.stopMic();
+      setMicConsent(false);
+      setInitError(error instanceof Error ? error.message : '無法啟動麥克風。');
+    } finally {
+      setStarting(false);
+    }
+  }, [audio, connect, starting]);
 
   const hangUp = useCallback(() => {
     ws.hangUp();
@@ -76,8 +87,8 @@ export default function App() {
 
   const retry = useCallback(() => {
     setInitError(null);
-    void connect().catch((error) => setInitError(error instanceof Error ? error.message : '無法建立通話。'));
-  }, [connect]);
+    void beginCall();
+  }, [beginCall]);
 
   if (initError) {
     return (
@@ -88,6 +99,10 @@ export default function App() {
         <button onClick={() => window.location.reload()} className="mt-7 px-7 py-3 rounded-full bg-[#06C755] text-white">重新連線</button>
       </div>
     );
+  }
+
+  if (profile && !micConsent) {
+    return <MicPermission onAllow={() => void beginCall()} onDeny={closeLiff} />;
   }
 
   if (!profile || ws.callStatus === 'idle') {
