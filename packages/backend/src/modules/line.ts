@@ -28,7 +28,13 @@ export interface LineImageMessage {
   previewImageUrl: string // HTTPS jpeg ≤1MB
 }
 
-export type LineMessage = LineTextMessage | LineAudioMessage | LineImageMessage
+export interface LineFlexMessage {
+  type: 'flex'
+  altText: string
+  contents: Record<string, unknown>
+}
+
+export type LineMessage = LineTextMessage | LineAudioMessage | LineImageMessage | LineFlexMessage
 
 async function lineApi(path: string, payload: unknown): Promise<void> {
   if (config.lineChannelToken === 'not-configured') {

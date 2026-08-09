@@ -42,6 +42,7 @@ export interface BrainInput {
   message: string
   semanticQuery?: string
   preferVoice?: boolean
+  voiceCall?: boolean
   attachment?: BrainAttachment
 }
 
@@ -58,7 +59,7 @@ type ContentBlock =
   | { type: 'document'; source: { type: 'base64'; media_type: string; data: string } }
 
 export async function processMessage(input: BrainInput): Promise<BrainOutput> {
-  const { tenant, user, message, semanticQuery, preferVoice, attachment } = input
+  const { tenant, user, message, semanticQuery, preferVoice, voiceCall, attachment } = input
   const db = forTenant(tenant.id)
 
   const character = await getCharacterForTenant(tenant)
@@ -116,6 +117,12 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     preferVoice
       ? `# 本輪回覆媒介
 對方這一輪是用錄音跟你說話。請優先用自己的聲音回應：回答中至少輸出一個 [VOICE_GEN emotion="calm" style="conversation"|完整且自然的口語句子]，語音控制在一到三句；較長的細節可另外保留文字。依語意選擇 emotion="calm|happy|sad|surprised" 與 style="conversation|news|comfort|encourage"。不要說出控制標籤本身。`
+      : '',
+    voiceCall
+      ? `# 即時語音通話
+你正在和使用者即時通話。回答要像真人說話，不使用 Markdown、條列、星號、井號或網址。
+每次只回答二到三句，通常不超過 100 個中文字；先直接回應，再自然地問一句是否要繼續。
+不要朗讀「情緒標籤」或系統標記。若需要網路資料，可以使用既有搜尋能力後再簡短口述結果。`
       : '',
     CONVERSATION_STYLE_PROMPT,
     user.can_shape_soul ? AUTHORIZED_UPGRADE_PROMPT : '',
@@ -200,7 +207,7 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     .join('')
     .trim()
 
-  let data = await request(messages, 1200)
+  let data = await request(messages, voiceCall ? 320 : 1200)
   let reply = textOf(data)
   let inputTokens = data.usage?.input_tokens ?? 0
   let outputTokens = data.usage?.output_tokens ?? 0
@@ -209,7 +216,7 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
   if (!reply) {
     data = await request(
       messages,
-      800,
+      voiceCall ? 240 : 800,
       '\n\n重要：這一輪一定要輸出至少一句自然、可直接給 LINE 使用者看到的繁體中文，不可只輸出內部標籤。',
     )
     reply = textOf(data)
@@ -229,7 +236,7 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
         webSearchUsed = true
         const searched = await request(
           messages,
-          1200,
+          voiceCall ? 320 : 1200,
           `\n\n===\n\n${autonomousSearchBlock}\n\n現在請根據搜尋結果重新完整回答。不要輸出 WEB_SEARCH 標籤，也不要假裝搜尋結果比來源更確定。`,
         )
         const searchedReply = textOf(searched)
@@ -246,7 +253,7 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
   }
 
   // 模型碰到 token 上限時，讓它從斷點續寫；不再把半句話直接交給 LINE。
-  if (reply && data.stop_reason === 'max_tokens') {
+  if (!voiceCall && reply && data.stop_reason === 'max_tokens') {
     const continuation = await request(
       [...messages, { role: 'assistant', content: reply }, {
         role: 'user',
@@ -261,7 +268,7 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
   }
 
   // 成本錶：每次動腦落一筆（bridge = Max 月費記 0 元；直連 API 記估算金額）
-  void logLlmCost(tenant.id, useBridge, attachment ? 'chat:vision' : 'chat', {
+  void logLlmCost(tenant.id, useBridge, voiceCall ? 'voice-call' : attachment ? 'chat:vision' : 'chat', {
     input_tokens: inputTokens,
     output_tokens: outputTokens,
   }).catch(() => {})

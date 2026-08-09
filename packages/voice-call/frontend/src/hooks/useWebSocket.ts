@@ -81,15 +81,18 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   }, []);
 
   // 建立 WebSocket 連線
-  const connect = useCallback((userId: string, sessionId?: string | null) => {
+  const connect = useCallback((token: string, sessionId: string) => {
     // 推導 WebSocket URL
     const wsUrl = options.url
       || import.meta.env.VITE_WS_URL as string
-      || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/voice-call`;
+      || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/voice-call/ws`;
+
+    const authenticatedUrl = new URL(wsUrl, window.location.href);
+    authenticatedUrl.searchParams.set('token', token);
 
     updateCallStatus('connecting');
 
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(authenticatedUrl.toString());
     wsRef.current = ws;
 
     ws.binaryType = 'arraybuffer';
@@ -110,8 +113,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       // 告訴後端：開始通話
       ws.send(JSON.stringify({
         type: 'call:start',
-        userId,
-        sessionId: sessionId || undefined,
+        sessionId,
       }));
     };
 

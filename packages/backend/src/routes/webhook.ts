@@ -62,6 +62,11 @@ import {
   supportedDocumentLabel,
   type ExtractedDocument,
 } from '../modules/documents.js'
+import {
+  buildVoiceCallFlex,
+  isVoiceCallTrigger,
+  voiceCallAvailable,
+} from '../modules/voiceCall/trigger.js'
 
 /**
  * 商用 LINE OA webhook（精簡路由，職責分離——本尊 3000 行 monolith 的教訓）：
@@ -168,6 +173,16 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
   if (tenant.status === 'genesis_pending') {
     const genesis = await stepGenesis(tenant, user.display_name, text)
     await replyText(replyToken, genesis.texts)
+    return
+  }
+
+  // This explicit OA action bypasses the LLM and never charges a text turn.
+  if (isVoiceCallTrigger(text)) {
+    if (!voiceCallAvailable()) {
+      await replyText(replyToken, ['語音通話正在完成最後設定，我準備好就會讓你直接打給我。'])
+      return
+    }
+    await replyMessages(replyToken, [buildVoiceCallFlex()])
     return
   }
 

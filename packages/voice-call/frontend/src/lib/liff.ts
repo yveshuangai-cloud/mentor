@@ -1,13 +1,4 @@
-/**
- * LIFF SDK 初始化 + 身分識別
- *
- * LIFF 開啟時自動取得 LINE userId，
- * 後端用這個 userId 比對 users 表來辨識是誰打來的。
- */
-
 import liff from '@line/liff';
-
-const LIFF_ID = import.meta.env.VITE_LIFF_ID as string;
 
 export interface LiffProfile {
   userId: string;
@@ -15,73 +6,58 @@ export interface LiffProfile {
   pictureUrl?: string;
 }
 
-let _initialized = false;
-let _profile: LiffProfile | null = null;
+export interface VoiceSession {
+  sessionId: string;
+  token: string;
+  websocketPath: string;
+}
 
-/**
- * 初始化 LIFF SDK
- * - 在 LINE 內開啟會自動登入
- * - 在外部瀏覽器會跳轉到 LINE Login
- */
+let initialized = false;
+let profile: LiffProfile | null = null;
+
+async function loadLiffId(): Promise<string> {
+  const response = await fetch('/api/voice-call/public-config');
+  if (!response.ok) throw new Error('無法讀取通話設定。');
+  const config = await response.json() as { liffId?: string | null };
+  if (!config.liffId) throw new Error('LINE 通話入口尚未完成設定。');
+  return config.liffId;
+}
+
 export async function initLiff(): Promise<void> {
-  if (_initialized) return;
-
-  if (!LIFF_ID) {
-    console.warn('⚠️ VITE_LIFF_ID 未設定，使用 mock 模式');
-    _initialized = true;
-    return;
-  }
-
-  await liff.init({ liffId: LIFF_ID });
-  _initialized = true;
-
-  // 如果不在 LINE 內且未登入 → 跳轉登入
+  if (initialized) return;
+  const liffId = await loadLiffId();
+  await liff.init({ liffId });
+  initialized = true;
   if (!liff.isLoggedIn()) {
-    liff.login();
-    return;
+    liff.login({ redirectUri: window.location.href });
+    throw new Error('正在前往 LINE 登入…');
   }
 }
 
-/**
- * 取得 LINE 用戶 profile
- */
 export async function getLiffProfile(): Promise<LiffProfile> {
-  if (_profile) return _profile;
-
-  // Mock 模式（開發用）
-  if (!LIFF_ID) {
-    _profile = {
-      userId: 'dev-user-001',
-      displayName: '開發測試',
-      pictureUrl: undefined,
-    };
-    return _profile;
-  }
-
-  const profile = await liff.getProfile();
-  _profile = {
-    userId: profile.userId,
-    displayName: profile.displayName,
-    pictureUrl: profile.pictureUrl,
+  if (profile) return profile;
+  const result = await liff.getProfile();
+  profile = {
+    userId: result.userId,
+    displayName: result.displayName,
+    pictureUrl: result.pictureUrl,
   };
-  return _profile;
+  return profile;
 }
 
-/**
- * 關閉 LIFF 視窗（回到 LINE 聊天室）
- */
+export async function createVoiceSession(): Promise<VoiceSession> {
+  const idToken = liff.getIDToken();
+  if (!idToken) throw new Error('LINE 身分驗證已失效，請重新開啟通話。');
+  const response = await fetch('/api/voice-call/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken }),
+  });
+  if (!response.ok) throw new Error('無法建立安全通話，請稍後再試。');
+  return response.json() as Promise<VoiceSession>;
+}
+
 export function closeLiff(): void {
-  if (LIFF_ID && liff.isInClient()) {
-    liff.closeWindow();
-  } else {
-    window.close();
-  }
-}
-
-/**
- * 從 URL 取得 session_id 參數
- */
-export function getSessionId(): string | null {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('session_id');
+  if (liff.isInClient()) liff.closeWindow();
+  else window.close();
 }

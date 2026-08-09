@@ -26,6 +26,8 @@ const configSchema = z.object({
   // 商用 LINE OA（獨立於本尊，絕不共用）
   lineChannelToken: blankAsUndefined(z.string().default('not-configured')),
   lineChannelSecret: blankAsUndefined(z.string().default('not-configured')),
+  lineLoginChannelId: blankAsUndefined(z.string().default('not-configured')),
+  liffId: blankAsUndefined(z.string().default('not-configured')),
   // 精確 LINE User ID 白名單；只從 Secret Manager 注入，不進程式庫。
   soulAuthorizedLineUserIds: blankAsUndefined(z.string().default('')),
 
@@ -55,6 +57,9 @@ const configSchema = z.object({
   minimaxGroupId: blankAsUndefined(z.string().default('')),
   minimaxVoiceId: blankAsUndefined(z.string().default('not-configured')),
 
+  // Real-time speech recognition for the isolated Mantou voice service.
+  deepgramApiKey: blankAsUndefined(z.string().default('not-configured')),
+
   // Gemini（聽音檔 STT＋畫圖生圖執行端）
   geminiApiKey: blankAsUndefined(z.string().default('not-configured')),
   googleCloudProject: blankAsUndefined(z.string().default('project-ed7d5a71-0316-4c2f-896')),
@@ -69,6 +74,8 @@ const rawConfig = {
   jwtSecret: process.env.JWT_SECRET,
   lineChannelToken: process.env.LINE_CHANNEL_TOKEN,
   lineChannelSecret: process.env.LINE_CHANNEL_SECRET,
+  lineLoginChannelId: process.env.LINE_LOGIN_CHANNEL_ID,
+  liffId: process.env.LIFF_ID,
   soulAuthorizedLineUserIds: process.env.SOUL_AUTHORIZED_LINE_USER_IDS,
   anthropicApiKey: process.env.ANTHROPIC_API_KEY,
   llmBaseUrl: process.env.LLM_BASE_URL,
@@ -84,6 +91,7 @@ const rawConfig = {
   minimaxApiKey: process.env.MINIMAX_API_KEY,
   minimaxGroupId: process.env.MINIMAX_GROUP_ID,
   minimaxVoiceId: process.env.MINIMAX_VOICE_ID,
+  deepgramApiKey: process.env.DEEPGRAM_API_KEY,
   geminiApiKey: process.env.GEMINI_API_KEY,
   googleCloudProject: process.env.GOOGLE_CLOUD_PROJECT,
   vertexLocation: process.env.VERTEX_LOCATION,
