@@ -1,5 +1,12 @@
 FROM node:22-slim
 
+# @livekit/rtc-node uses the platform CA store for its native WebRTC TLS
+# connection. The slim base image does not guarantee that bundle is present.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && update-ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY package.json package-lock.json ./

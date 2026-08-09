@@ -60,6 +60,13 @@ const configSchema = z.object({
   // Real-time speech recognition for the isolated Mantou voice service.
   deepgramApiKey: blankAsUndefined(z.string().default('not-configured')),
 
+  // Dedicated LiveKit Cloud project for Mantou. Never reuse another persona's key pair.
+  livekitUrl: blankAsUndefined(z.string().url().default('https://not-configured.invalid')),
+  livekitApiKey: blankAsUndefined(z.string().default('not-configured')),
+  livekitApiSecret: blankAsUndefined(z.string().default('not-configured')),
+  livekitAgentName: blankAsUndefined(z.string().default('mantou-agent')),
+  livekitEnabled: envBoolean(false),
+
   // Gemini（聽音檔 STT＋畫圖生圖執行端）
   geminiApiKey: blankAsUndefined(z.string().default('not-configured')),
   googleCloudProject: blankAsUndefined(z.string().default('project-ed7d5a71-0316-4c2f-896')),
@@ -92,6 +99,11 @@ const rawConfig = {
   minimaxGroupId: process.env.MINIMAX_GROUP_ID,
   minimaxVoiceId: process.env.MINIMAX_VOICE_ID,
   deepgramApiKey: process.env.DEEPGRAM_API_KEY,
+  livekitUrl: process.env.LIVEKIT_URL?.trim(),
+  livekitApiKey: process.env.LIVEKIT_API_KEY?.trim(),
+  livekitApiSecret: process.env.LIVEKIT_API_SECRET?.trim(),
+  livekitAgentName: process.env.LIVEKIT_AGENT_NAME?.trim(),
+  livekitEnabled: process.env.LIVEKIT_ENABLED,
   geminiApiKey: process.env.GEMINI_API_KEY,
   googleCloudProject: process.env.GOOGLE_CLOUD_PROJECT,
   vertexLocation: process.env.VERTEX_LOCATION,

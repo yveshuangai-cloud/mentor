@@ -6,11 +6,22 @@ export interface LiffProfile {
   pictureUrl?: string;
 }
 
-export interface VoiceSession {
+export interface WebSocketVoiceSession {
+  transport: 'websocket';
   sessionId: string;
   token: string;
   websocketPath: string;
 }
+
+export interface LiveKitVoiceSession {
+  transport: 'livekit';
+  sessionId: string;
+  token: string;
+  url: string;
+  roomName: string;
+}
+
+export type VoiceSession = WebSocketVoiceSession | LiveKitVoiceSession;
 
 let initialized = false;
 let profile: LiffProfile | null = null;

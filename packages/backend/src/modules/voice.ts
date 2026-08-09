@@ -441,6 +441,142 @@ export async function streamSynthesize(
   })
 }
 
+export interface StreamPcmOptions {
+  signal?: AbortSignal
+  onPcmChunk: (chunk: Buffer) => void
+  onFirstAudioChunk?: (metadata: { traceId: string | null; profile: VoiceProfile }) => void
+}
+
+/**
+ * MiniMax native PCM stream for LiveKit. LiveKit accepts raw signed 16-bit
+ * little-endian frames, so this avoids MP3 buffering and decoding entirely.
+ */
+export async function streamSynthesizePcm(
+  clip: VoiceClip,
+  options: StreamPcmOptions,
+): Promise<{ durationMs: number; traceId: string | null; profile: VoiceProfile }> {
+  const profile = resolveLiveVoiceProfile(clip)
+  const groupQuery = config.minimaxGroupId
+    ? `?GroupId=${encodeURIComponent(config.minimaxGroupId)}`
+    : ''
+
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(`wss://api.minimax.io/ws/v1/t2a_v2${groupQuery}`, {
+      headers: { Authorization: `Bearer ${config.minimaxApiKey}` },
+    })
+    let settled = false
+    let taskStarted = false
+    let firstAudio = false
+    let durationMs = 0
+    let traceId: string | null = null
+
+    const cleanup = () => {
+      clearTimeout(connectTimeout)
+      options.signal?.removeEventListener('abort', abort)
+    }
+    const finish = () => {
+      if (settled) return
+      settled = true
+      cleanup()
+      if (socket.readyState === WebSocket.OPEN) socket.close(1000, 'complete')
+      logTts('INFO', {
+        transport: 'livekit-pcm',
+        model: MINIMAX_TTS_MODEL,
+        emotion: profile.emotion,
+        style: profile.style,
+        speed: profile.speed,
+        pitch: profile.pitch,
+        traceId,
+        durationMs,
+      })
+      resolve({ durationMs, traceId, profile })
+    }
+    const fail = (error: Error) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      socket.close()
+      logTts('ERROR', {
+        transport: 'livekit-pcm',
+        model: MINIMAX_TTS_MODEL,
+        emotion: profile.emotion,
+        style: profile.style,
+        speed: profile.speed,
+        pitch: profile.pitch,
+        traceId,
+        error: error.message,
+      })
+      reject(error)
+    }
+    const abort = () => fail(new DOMException('Voice generation aborted', 'AbortError'))
+    const connectTimeout = setTimeout(() => fail(new Error('MiniMax WebSocket connection timeout')), 12_000)
+    options.signal?.addEventListener('abort', abort, { once: true })
+    if (options.signal?.aborted) return abort()
+
+    socket.on('message', (raw) => {
+      try {
+        const message = JSON.parse(raw.toString()) as {
+          event?: string
+          data?: { audio?: string }
+          extra_info?: { audio_length?: number }
+          is_final?: boolean
+          trace_id?: string
+          base_resp?: { status_code?: number; status_msg?: string }
+        }
+        traceId = message.trace_id ?? traceId
+        if (message.base_resp?.status_code && message.base_resp.status_code !== 0) {
+          fail(new Error(`MiniMax TTS ${message.base_resp.status_code}: ${message.base_resp.status_msg ?? 'unknown'}`))
+          return
+        }
+        if (message.event === 'connected_success') {
+          socket.send(JSON.stringify({
+            event: 'task_start',
+            model: MINIMAX_TTS_MODEL,
+            language_boost: 'Chinese',
+            voice_setting: {
+              voice_id: config.minimaxVoiceId,
+              speed: profile.speed,
+              vol: 1,
+              pitch: profile.pitch,
+              emotion: profile.emotion,
+            },
+            audio_setting: { format: 'pcm', sample_rate: 24000, channel: 1 },
+          }))
+          return
+        }
+        if (message.event === 'task_started' && !taskStarted) {
+          taskStarted = true
+          socket.send(JSON.stringify({ event: 'task_continue', text: clip.text }))
+          return
+        }
+        if (message.data?.audio) {
+          const chunk = Buffer.from(message.data.audio, 'hex')
+          if (chunk.length) {
+            if (!firstAudio) {
+              firstAudio = true
+              options.onFirstAudioChunk?.({ traceId, profile })
+            }
+            options.onPcmChunk(chunk)
+          }
+        }
+        durationMs = message.extra_info?.audio_length ?? durationMs
+        if (message.is_final) {
+          socket.send(JSON.stringify({ event: 'task_finish' }))
+          finish()
+        } else if (message.event === 'task_failed') {
+          fail(new Error(`MiniMax TTS task failed: ${message.base_resp?.status_msg ?? 'unknown'}`))
+        }
+      } catch (error) {
+        fail(error as Error)
+      }
+    })
+    socket.on('error', (error) => fail(error))
+    socket.on('close', () => {
+      if (!settled) fail(new Error('MiniMax WebSocket closed before PCM audio completed'))
+    })
+  })
+}
+
 // ── ffmpeg 轉檔（音訊格式互轉、圖片縮圖）─────────────────────
 
 export async function ffmpegConvert(input: Buffer, inExt: string, outExt: string, args: string[]): Promise<Buffer> {

@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type WebSocket from 'ws'
+import { RoomAgentDispatch, RoomConfiguration } from '@livekit/protocol'
+import { AccessToken } from 'livekit-server-sdk'
 import { config } from '../config.js'
 import { platformQuery } from '../db/index.js'
 import { forTenant } from '../db/tenantDb.js'
@@ -82,7 +84,39 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(403).send({ error: 'voice_membership_not_active' })
       }
       const sessionId = randomUUID()
+      const livekitReady = config.livekitEnabled
+        && config.livekitApiKey !== 'not-configured'
+        && config.livekitApiSecret !== 'not-configured'
+        && !config.livekitUrl.includes('not-configured')
+      if (livekitReady) {
+        const roomName = `mantou-${sessionId}`
+        const metadata = JSON.stringify({ lineUserId: identity.lineUserId, sessionId })
+        const accessToken = new AccessToken(config.livekitApiKey, config.livekitApiSecret, {
+          identity: `line-${identity.lineUserId}-${sessionId}`,
+          name: identity.displayName ?? 'LINE user',
+          metadata,
+          ttl: '30m',
+        })
+        accessToken.addGrant({
+          roomJoin: true,
+          room: roomName,
+          canPublish: true,
+          canSubscribe: true,
+          canPublishData: true,
+        })
+        accessToken.roomConfig = new RoomConfiguration({
+          agents: [new RoomAgentDispatch({ agentName: config.livekitAgentName, metadata })],
+        })
+        return {
+          transport: 'livekit' as const,
+          sessionId,
+          token: await accessToken.toJwt(),
+          url: config.livekitUrl,
+          roomName,
+        }
+      }
       return {
+        transport: 'websocket' as const,
         sessionId,
         token: issueVoiceToken(identity.lineUserId, sessionId),
         websocketPath: '/api/voice-call/ws',

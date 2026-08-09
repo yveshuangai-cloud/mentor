@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { closeLiff, createVoiceSession, getLiffProfile, initLiff, type LiffProfile } from './lib/liff';
 import { useAudio } from './hooks/useAudio';
 import { useWebSocket } from './hooks/useWebSocket';
+import { useLiveKit } from './hooks/useLiveKit';
 import CallScreen from './components/CallScreen';
 import DialTone from './components/DialTone';
 import MicPermission from './components/MicPermission';
@@ -11,6 +12,8 @@ export default function App() {
   const [initError, setInitError] = useState<string | null>(null);
   const [micConsent, setMicConsent] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [transport, setTransport] = useState<'websocket' | 'livekit'>('websocket');
+  const livekit = useLiveKit();
 
   const audio = useAudio({
     onAudioChunk: (chunk) => ws.sendAudioChunk(chunk),
@@ -45,11 +48,6 @@ export default function App() {
     },
   });
 
-  const connect = useCallback(async () => {
-    const session = await createVoiceSession();
-    ws.connect(session.token, session.sessionId);
-  }, [ws]);
-
   useEffect(() => {
     void (async () => {
       try {
@@ -68,9 +66,16 @@ export default function App() {
     try {
       // Must happen inside the user's click gesture. LINE WebView may otherwise
       // leave AudioContext suspended even though getUserMedia was granted.
-      await audio.startMic();
+      // LiveKit owns microphone capture when selected. The legacy transport
+      // keeps its existing Web Audio capture as a safe rollback path.
+      const session = await createVoiceSession();
+      setTransport(session.transport);
+      if (session.transport === 'livekit') await livekit.connect(session);
+      else {
+        await audio.startMic();
+        ws.connect(session.token, session.sessionId);
+      }
       setMicConsent(true);
-      await connect();
     } catch (error) {
       audio.stopMic();
       setMicConsent(false);
@@ -78,14 +83,17 @@ export default function App() {
     } finally {
       setStarting(false);
     }
-  }, [audio, connect, starting]);
+  }, [audio, livekit, starting, ws]);
 
   const hangUp = useCallback(() => {
-    ws.hangUp();
-    audio.stopMic();
-    audio.stopPlayback();
+    if (transport === 'livekit') livekit.hangUp();
+    else {
+      ws.hangUp();
+      audio.stopMic();
+      audio.stopPlayback();
+    }
     setTimeout(closeLiff, 700);
-  }, [audio, ws]);
+  }, [audio, livekit, transport, ws]);
 
   const retry = useCallback(() => {
     setInitError(null);
@@ -107,7 +115,20 @@ export default function App() {
     return <MicPermission onAllow={() => void beginCall()} onDeny={closeLiff} />;
   }
 
-  if (!profile || ws.callStatus === 'idle') {
+  const call = transport === 'livekit'
+    ? livekit
+    : {
+        callStatus: ws.callStatus,
+        felicityState: ws.felicityState,
+        micActive: audio.micActive,
+        micError: audio.micError,
+        isMuted: audio.isMuted,
+        isSpeakerOn: audio.isSpeakerOn,
+        toggleMute: audio.toggleMute,
+        toggleSpeaker: audio.toggleSpeaker,
+      };
+
+  if (!profile || call.callStatus === 'idle') {
     return (
       <div className="fixed inset-0 bg-[#111827] flex flex-col items-center justify-center">
         <img src="/avatar.jpg" alt="饅頭" className="w-24 h-24 rounded-full object-cover object-top shadow-xl animate-pulse" />
@@ -118,18 +139,18 @@ export default function App() {
 
   return (
     <>
-      <DialTone playing={ws.callStatus === 'ringing' || ws.callStatus === 'connecting'} maxBeeps={5} />
+      <DialTone playing={call.callStatus === 'ringing' || call.callStatus === 'connecting'} maxBeeps={5} />
       <CallScreen
-        callStatus={ws.callStatus}
-        felicityState={ws.felicityState}
-        micActive={audio.micActive}
-        micError={audio.micError}
-        isMuted={audio.isMuted}
-        isSpeakerOn={audio.isSpeakerOn}
+        callStatus={call.callStatus}
+        felicityState={call.felicityState}
+        micActive={call.micActive}
+        micError={call.micError}
+        isMuted={call.isMuted}
+        isSpeakerOn={call.isSpeakerOn}
         onHangUp={hangUp}
         onRetry={retry}
-        onToggleMute={audio.toggleMute}
-        onToggleSpeaker={audio.toggleSpeaker}
+        onToggleMute={call.toggleMute}
+        onToggleSpeaker={call.toggleSpeaker}
       />
     </>
   );
