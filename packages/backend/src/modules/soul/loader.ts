@@ -39,6 +39,7 @@ const SKILL_FILES = [
   'skills/voice-clips.md',
   'skills/web-search.md',
   'skills/document-reading.md',
+  'skills/mantou-emotional-voice/SKILL.md',
 ]
 
 const cache = new Map<string, string>() // key: `${slug}:${rel}`

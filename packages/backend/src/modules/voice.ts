@@ -20,7 +20,8 @@ export interface VoiceClip {
   style?: VoiceStyle
 }
 
-export type VoiceEmotion = 'calm' | 'happy' | 'sad' | 'surprised'
+/** MiniMax Speech 2.8's seven documented emotions. Omit the field for auto/neutral delivery. */
+export type VoiceEmotion = 'happy' | 'sad' | 'angry' | 'fearful' | 'disgusted' | 'surprised' | 'calm'
 export type VoiceStyle = 'conversation' | 'news' | 'comfort' | 'encourage'
 
 export const MINIMAX_TTS_MODEL = 'speech-2.8-hd'
@@ -30,22 +31,44 @@ export const MINIMAX_TTS_MODEL = 'speech-2.8-hd'
 const VOICE_TAG_RE = /\[VOICE_GEN\b([^|\]]*)\|([^\]]+)\]/g
 const KISS_TAG_RE = /\[親親\]/g
 
-const VALID_EMOTIONS = new Set<VoiceEmotion>(['calm', 'happy', 'sad', 'surprised'])
+export const MINIMAX_EMOTIONS = [
+  'happy', 'sad', 'angry', 'fearful', 'disgusted', 'surprised', 'calm',
+] as const satisfies readonly VoiceEmotion[]
+const VALID_EMOTIONS = new Set<VoiceEmotion>(MINIMAX_EMOTIONS)
 const VALID_STYLES = new Set<VoiceStyle>(['conversation', 'news', 'comfort', 'encourage'])
 
 // MiniMax 2.8 原生 interjection tags。保留在 TTS 文字中，讓它真的發出聲音而非只改整段情緒。
+export const MINIMAX_INTERJECTION_TAGS = [
+  'laughs', 'chuckle', 'coughs', 'clear-throat', 'groans', 'breath', 'pant', 'inhale',
+  'exhale', 'gasps', 'sniffs', 'sighs', 'snorts', 'burps', 'lip-smacking', 'humming',
+  'hissing', 'emm', 'sneezes',
+] as const
+
 const INTERJECTION_MAP: [RegExp, string, VoiceEmotion?][] = [
   [/[（(](?:大笑|笑)[）)]/g, '(laughs)', 'happy'],
   [/[（(](?:輕笑|噗哧)[）)]/g, '(chuckle)', 'happy'],
+  [/[（(](?:咳嗽|咳)[）)]/g, '(coughs)'],
+  [/[（(](?:清喉嚨|清嗓)[）)]/g, '(clear-throat)'],
+  [/[（(](?:呻吟|低吟)[）)]/g, '(groans)', 'sad'],
   [/[（(]嘆氣[）)]/g, '(sighs)', 'sad'],
   [/[（(](?:呼吸|深呼吸)[）)]/g, '(breath)'],
+  [/[（(](?:喘氣|喘息)[）)]/g, '(pant)', 'fearful'],
   [/[（(]吸氣[）)]/g, '(inhale)'],
   [/[（(](?:吐氣|呼氣)[）)]/g, '(exhale)'],
   [/[（(](?:驚呼|驚訝)[）)]/g, '(gasps)', 'surprised'],
+  [/[（(](?:吸鼻子|抽鼻子)[）)]/g, '(sniffs)', 'sad'],
+  [/[（(](?:哼鼻子|哼氣)[）)]/g, '(snorts)', 'disgusted'],
+  [/[（(]打嗝[）)]/g, '(burps)'],
+  [/[（(](?:咂嘴|舔嘴唇)[）)]/g, '(lip-smacking)'],
+  [/[（(](?:哼唱|哼歌)[）)]/g, '(humming)', 'happy'],
+  [/[（(](?:嘶聲|噓聲)[）)]/g, '(hissing)', 'angry'],
+  [/[（(](?:嗯|沉吟)[）)]/g, '(emm)', 'calm'],
+  [/[（(](?:打噴嚏|噴嚏)[）)]/g, '(sneezes)'],
 ]
 
 interface VoiceProfile {
-  emotion: VoiceEmotion
+  /** Undefined means MiniMax auto/neutral; never send invented values such as neutral or fluent. */
+  emotion?: VoiceEmotion
   style: VoiceStyle
   speed: number
   pitch: number
@@ -97,18 +120,41 @@ export function resolveVoiceProfile(clip: VoiceClip): VoiceProfile {
   let emotion = clip.emotion
   if (!emotion) {
     if (/驚訝|沒想到|竟然|真的嗎|太意外|[！!]{2,}/.test(text)) emotion = 'surprised'
+    else if (/噁心|反感|厭惡|令人作嘔|看不下去/.test(text)) emotion = 'disgusted'
+    else if (/憤怒|生氣|火大|太扯|荒謬|不能接受|不公平|夠了|底線/.test(text)) emotion = 'angry'
+    else if (/害怕|恐慌|不安|擔心|危險|風險|緊張/.test(text)) emotion = 'fearful'
     else if (style === 'comfort' && /難過|傷心|辛苦|委屈|失落|抱歉/.test(text)) emotion = 'sad'
     else if (style === 'encourage') emotion = 'happy'
-    else emotion = 'calm'
+    else if (/開心|高興|喜歡|太好|有趣|期待|謝謝|很棒|恭喜/.test(text)) emotion = 'happy'
+    else if (/放心|安靜|穩住|沉澱|慢慢說|我在聽/.test(text)) emotion = 'calm'
   }
 
   const settings: Record<VoiceStyle, Pick<VoiceProfile, 'speed' | 'pitch'>> = {
-    conversation: { speed: 0.96, pitch: 0 },
+    conversation: { speed: 1.0, pitch: 0 },
     news: { speed: 1.05, pitch: 0 },
     comfort: { speed: 0.9, pitch: -1 },
     encourage: { speed: 1.0, pitch: 1 },
   }
   return { emotion, style, ...settings[style] }
+}
+
+function minimaxVoiceSetting(profile: VoiceProfile): Record<string, string | number> {
+  return {
+    voice_id: config.minimaxVoiceId,
+    speed: profile.speed,
+    vol: 1,
+    pitch: profile.pitch,
+    ...(profile.emotion ? { emotion: profile.emotion } : {}),
+  }
+}
+
+function loggedEmotion(profile: VoiceProfile): VoiceEmotion | 'auto' {
+  return profile.emotion ?? 'auto'
+}
+
+function loggedInterjections(text: string): string[] {
+  const allowed = MINIMAX_INTERJECTION_TAGS.join('|')
+  return text.match(new RegExp(`\\((?:${allowed})\\)`, 'g')) ?? []
 }
 
 function sentenceParts(text: string): string[] {
@@ -254,11 +300,7 @@ export async function synthesize(clip: VoiceClip): Promise<{ mp3: Buffer; durati
       language_boost: 'Chinese',
       output_format: 'hex',
       voice_setting: {
-        voice_id: config.minimaxVoiceId,
-        speed: profile.speed,
-        vol: 1,
-        pitch: profile.pitch,
-        emotion: profile.emotion,
+        ...minimaxVoiceSetting(profile),
       },
       audio_setting: { format: 'mp3', sample_rate: 32000, bitrate: 128000, channel: 1 },
     }),
@@ -266,7 +308,7 @@ export async function synthesize(clip: VoiceClip): Promise<{ mp3: Buffer; durati
   if (!res.ok) {
     logTts('ERROR', {
       model: MINIMAX_TTS_MODEL,
-      emotion: profile.emotion,
+      emotion: loggedEmotion(profile),
       style: profile.style,
       speed: profile.speed,
       pitch: profile.pitch,
@@ -284,7 +326,7 @@ export async function synthesize(clip: VoiceClip): Promise<{ mp3: Buffer; durati
   if (data.base_resp?.status_code !== 0 || !data.data?.audio) {
     logTts('ERROR', {
       model: MINIMAX_TTS_MODEL,
-      emotion: profile.emotion,
+      emotion: loggedEmotion(profile),
       style: profile.style,
       speed: profile.speed,
       pitch: profile.pitch,
@@ -295,13 +337,13 @@ export async function synthesize(clip: VoiceClip): Promise<{ mp3: Buffer; durati
   }
   logTts('INFO', {
     model: MINIMAX_TTS_MODEL,
-    emotion: profile.emotion,
+    emotion: loggedEmotion(profile),
     style: profile.style,
     speed: profile.speed,
     pitch: profile.pitch,
     traceId: data.trace_id ?? null,
     durationMs: data.extra_info?.audio_length ?? 0,
-    interjections: clip.text.match(/\((?:laughs|chuckle|breath|inhale|exhale|gasps|sighs)\)/g) ?? [],
+    interjections: loggedInterjections(clip.text),
   })
   return {
     mp3: Buffer.from(data.data.audio, 'hex'),
@@ -344,13 +386,13 @@ export async function streamSynthesize(
       logTts('INFO', {
         transport: 'websocket',
         model: MINIMAX_TTS_MODEL,
-        emotion: profile.emotion,
+        emotion: loggedEmotion(profile),
         style: profile.style,
         speed: profile.speed,
         pitch: profile.pitch,
         traceId,
         durationMs,
-        interjections: clip.text.match(/\((?:laughs|chuckle|breath|inhale|exhale|gasps|sighs)\)/g) ?? [],
+        interjections: loggedInterjections(clip.text),
       })
       resolve({ durationMs, traceId, profile })
     }
@@ -363,7 +405,7 @@ export async function streamSynthesize(
       logTts('ERROR', {
         transport: 'websocket',
         model: MINIMAX_TTS_MODEL,
-        emotion: profile.emotion,
+        emotion: loggedEmotion(profile),
         style: profile.style,
         speed: profile.speed,
         pitch: profile.pitch,
@@ -398,11 +440,7 @@ export async function streamSynthesize(
             model: MINIMAX_TTS_MODEL,
             language_boost: 'Chinese',
             voice_setting: {
-              voice_id: config.minimaxVoiceId,
-              speed: profile.speed,
-              vol: 1,
-              pitch: profile.pitch,
-              emotion: profile.emotion,
+              ...minimaxVoiceSetting(profile),
             },
             audio_setting: { format: 'mp3', sample_rate: 32000, bitrate: 128000, channel: 1 },
           }))
@@ -482,7 +520,7 @@ export async function streamSynthesizePcm(
       logTts('INFO', {
         transport: 'livekit-pcm',
         model: MINIMAX_TTS_MODEL,
-        emotion: profile.emotion,
+        emotion: loggedEmotion(profile),
         style: profile.style,
         speed: profile.speed,
         pitch: profile.pitch,
@@ -499,7 +537,7 @@ export async function streamSynthesizePcm(
       logTts('ERROR', {
         transport: 'livekit-pcm',
         model: MINIMAX_TTS_MODEL,
-        emotion: profile.emotion,
+        emotion: loggedEmotion(profile),
         style: profile.style,
         speed: profile.speed,
         pitch: profile.pitch,
@@ -534,11 +572,7 @@ export async function streamSynthesizePcm(
             model: MINIMAX_TTS_MODEL,
             language_boost: 'Chinese',
             voice_setting: {
-              voice_id: config.minimaxVoiceId,
-              speed: profile.speed,
-              vol: 1,
-              pitch: profile.pitch,
-              emotion: profile.emotion,
+              ...minimaxVoiceSetting(profile),
             },
             audio_setting: { format: 'pcm', sample_rate: 24000, channel: 1 },
           }))

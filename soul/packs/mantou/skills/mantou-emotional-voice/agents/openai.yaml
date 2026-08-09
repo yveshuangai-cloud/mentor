@@ -1,0 +1,4 @@
+interface:
+  display_name: "饅頭情緒發音"
+  short_description: "MiniMax Speech 2.8 情緒與非語言聲音標準"
+  default_prompt: "Use $mantou-emotional-voice to plan a natural emotional voice reply for Mantou."

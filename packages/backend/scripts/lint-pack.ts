@@ -36,6 +36,7 @@ const REQUIRED_FILES = [
   'skills/voice-clips.md',
   'skills/web-search.md',
   'skills/document-reading.md',
+  'skills/mantou-emotional-voice/SKILL.md',
 ]
 
 // 平台底線（不是角色個性，任何角色不得刪改）：檔案 → 必須出現的字串

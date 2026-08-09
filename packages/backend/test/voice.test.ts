@@ -3,6 +3,8 @@ import {
   clampVoiceCallReply,
   ensurePreferredVoice,
   extractVoiceTags,
+  MINIMAX_EMOTIONS,
+  MINIMAX_INTERJECTION_TAGS,
   MINIMAX_TTS_MODEL,
   planVoiceCallSegments,
   resolveLiveVoiceProfile,
@@ -14,7 +16,7 @@ describe('extractVoiceTags', () => {
     const result = extractVoiceTags('先給文字。\n[VOICE_GEN|我聽見了，你先不用急著回答。]')
 
     expect(result.cleanText).toBe('先給文字。')
-    expect(result.clips).toEqual([{ text: '我聽見了，你先不用急著回答。', emotion: 'calm', style: 'comfort' }])
+    expect(result.clips).toEqual([{ text: '我聽見了，你先不用急著回答。', emotion: undefined, style: 'comfort' }])
   })
 
   it('extracts emotion without speaking the control marker', () => {
@@ -48,6 +50,17 @@ describe('extractVoiceTags', () => {
     expect(result.clips[0]?.emotion).toBe('sad')
   })
 
+  it('supports all 19 documented MiniMax Speech 2.8 interjection tags', () => {
+    expect(MINIMAX_INTERJECTION_TAGS).toHaveLength(19)
+    const result = extractVoiceTags('[VOICE_GEN|（咳嗽）（清喉嚨）（呻吟）（喘氣）（抽鼻子）（哼鼻子）（打嗝）（咂嘴）（哼唱）（嘶聲）（嗯）（打噴嚏）測試。]')
+    for (const tag of [
+      'coughs', 'clear-throat', 'groans', 'pant', 'sniffs', 'snorts',
+      'burps', 'lip-smacking', 'humming', 'hissing', 'emm', 'sneezes',
+    ]) {
+      expect(result.clips[0]?.text).toContain(`(${tag})`)
+    }
+  })
+
   it('splits a clear emotional turn into two voice clips', () => {
     const result = extractVoiceTags('[VOICE_GEN|我知道你今天真的很難過。可是我相信你一定做得到！]')
 
@@ -58,9 +71,9 @@ describe('extractVoiceTags', () => {
 })
 
 describe('resolveVoiceProfile', () => {
-  it('uses a quicker calm delivery for news', () => {
+  it('uses a quicker automatic delivery for neutral news', () => {
     expect(resolveVoiceProfile({ text: '這是今天的 AI 新聞。' })).toMatchObject({
-      emotion: 'calm', style: 'news', speed: 1.05, pitch: 0,
+      emotion: undefined, style: 'news', speed: 1.05, pitch: 0,
     })
   })
 
@@ -76,6 +89,24 @@ describe('resolveVoiceProfile', () => {
   it('uses MiniMax speech 2.8 HD', () => {
     expect(MINIMAX_TTS_MODEL).toBe('speech-2.8-hd')
   })
+
+  it('supports exactly the seven documented Speech 2.8 emotions', () => {
+    expect(MINIMAX_EMOTIONS).toEqual([
+      'happy', 'sad', 'angry', 'fearful', 'disgusted', 'surprised', 'calm',
+    ])
+  })
+
+  it('selects strong emotions only when semantic evidence exists', () => {
+    expect(resolveVoiceProfile({ text: '這件事太荒謬，我不能接受。' }).emotion).toBe('angry')
+    expect(resolveVoiceProfile({ text: '我真的很害怕，也擔心會有危險。' }).emotion).toBe('fearful')
+    expect(resolveVoiceProfile({ text: '這種做法讓人反感，真的看不下去。' }).emotion).toBe('disgusted')
+  })
+
+  it('uses MiniMax auto emotion for ordinary speech instead of forcing calm', () => {
+    expect(resolveVoiceProfile({ text: '我們先從第一項開始討論。' })).toMatchObject({
+      emotion: undefined, style: 'conversation', speed: 1,
+    })
+  })
 })
 
 describe('live voice calls', () => {
@@ -88,7 +119,7 @@ describe('live voice calls', () => {
 
   it('uses faster live-call pacing without changing recorded voice defaults', () => {
     expect(resolveLiveVoiceProfile({ text: '我們先從最重要的地方開始。' })).toMatchObject({
-      emotion: 'calm', style: 'conversation', speed: 1.08,
+      emotion: undefined, style: 'conversation', speed: 1.08,
     })
     expect(resolveLiveVoiceProfile({ text: '這是今天的 AI 新聞。' })).toMatchObject({
       style: 'news', speed: 1.1,
