@@ -82,7 +82,26 @@ try {
   })
   assert.ok(await getProfile(user.rows[0].id), 'confirmed profile must be readable')
   const invite = await createFriendInvite(user.rows[0].id)
-  await claimFriendInvite(friend.rows[0].id, invite.token)
+  assert.equal(await claimFriendInvite(friend.rows[0].id, invite.token), 'pending')
+  assert.equal((await listFriends(friend.rows[0].id)).length, 0, 'claiming alone must not create friendship')
+
+  let friendSession = await findOrCreateSession(friend.rows[0].id)
+  for (const [index, question] of AIEQ_QUESTIONS.entries()) {
+    friendSession = (await appendEvent(friend.rows[0].id, {
+      eventId: `friend-integration-${index}`,
+      sessionId: friendSession.id,
+      source: 'card',
+      kind: 'answer',
+      questionId: question.id,
+      optionId: index % 2 === 0 ? 'b' : 'c',
+      occurredAt: new Date(Date.now() + 100 + index).toISOString(),
+      interpretationConfidence: 1,
+    })).session
+  }
+  await confirmProfile(friend.rows[0].id, friendSession.id, {
+    visibleToFriends: true,
+    personalizationConsent: false,
+  })
   const friends = await listFriends(friend.rows[0].id)
   assert.equal(friends.length, 1)
   assert.equal(friends[0].display_name, '測試河狸')

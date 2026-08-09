@@ -154,8 +154,8 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
   app.post('/friend-invites/:token/claim', async (req, reply) => {
     try {
       const who = await identity(req)
-      await claimFriendInvite(who.userId, (req.params as { token: string }).token)
-      return { ok: true, friends: await listFriends(who.userId) }
+      const status = await claimFriendInvite(who.userId, (req.params as { token: string }).token)
+      return { ok: true, status, friends: await listFriends(who.userId) }
     } catch (error) {
       return reply.code(400).send({ error: (error as Error).message })
     }

@@ -190,6 +190,7 @@ export async function confirmProfile(userId: number, sessionId: string, options:
        consent_granted_at=CASE WHEN $2 THEN COALESCE(consent_granted_at,now()) ELSE NULL END WHERE id=$1`,
       [sessionId, options.personalizationConsent],
     )
+    await finalizeClaimedInvites(client, userId)
   })
 }
 
@@ -205,6 +206,8 @@ export async function getProfile(userId: number): Promise<Record<string, unknown
 }
 
 export async function createFriendInvite(userId: number): Promise<{ token: string; expiresAt: string }> {
+  const profile = await platformQuery(`SELECT 1 FROM aieq_profiles WHERE user_id=$1`, [userId])
+  if (!profile.rowCount) throw new Error('confirmed_profile_required')
   const token = randomBytes(18).toString('base64url')
   const result = await platformQuery<{ expires_at: Date }>(
     `INSERT INTO aieq_friend_invites (token,inviter_user_id,expires_at)
@@ -213,26 +216,51 @@ export async function createFriendInvite(userId: number): Promise<{ token: strin
   return { token, expiresAt: result.rows[0].expires_at.toISOString() }
 }
 
-export async function claimFriendInvite(userId: number, token: string): Promise<void> {
-  await withTransaction(async (client) => {
-    const result = await client.query<{ inviter_user_id: number; claimed_by_user_id: number | null }>(
-      `SELECT inviter_user_id,claimed_by_user_id FROM aieq_friend_invites
+async function finalizeClaimedInvites(client: pg.PoolClient, recipientUserId: number): Promise<number> {
+  const invites = await client.query<{ token: string; inviter_user_id: number }>(
+    `SELECT i.token,i.inviter_user_id FROM aieq_friend_invites i
+     JOIN aieq_profiles inviter_profile ON inviter_profile.user_id=i.inviter_user_id
+     WHERE i.claimed_by_user_id=$1 AND i.status='claimed' AND i.expires_at>now()
+     FOR UPDATE OF i`, [recipientUserId],
+  )
+  for (const invite of invites.rows) {
+    const low = Math.min(recipientUserId, invite.inviter_user_id)
+    const high = Math.max(recipientUserId, invite.inviter_user_id)
+    await client.query(
+      `INSERT INTO aieq_friendships (user_low_id,user_high_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+      [low, high],
+    )
+    await client.query(`UPDATE aieq_friend_invites SET status='accepted' WHERE token=$1`, [invite.token])
+  }
+  return invites.rowCount ?? 0
+}
+
+export async function claimFriendInvite(userId: number, token: string): Promise<'pending' | 'connected'> {
+  return withTransaction(async (client) => {
+    const result = await client.query<{
+      inviter_user_id: number
+      claimed_by_user_id: number | null
+      status: 'issued' | 'claimed' | 'accepted' | 'expired'
+    }>(
+      `SELECT inviter_user_id,claimed_by_user_id,status FROM aieq_friend_invites
        WHERE token=$1 AND expires_at>now() FOR UPDATE`, [token],
     )
     const invite = result.rows[0]
     if (!invite) throw new Error('invite_invalid_or_expired')
     if (invite.inviter_user_id === userId) throw new Error('cannot_friend_self')
     if (invite.claimed_by_user_id && invite.claimed_by_user_id !== userId) throw new Error('invite_already_claimed')
-    const low = Math.min(userId, invite.inviter_user_id)
-    const high = Math.max(userId, invite.inviter_user_id)
+    if (invite.status === 'accepted') return 'connected'
     await client.query(
-      `INSERT INTO aieq_friendships (user_low_id,user_high_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-      [low, high],
-    )
-    await client.query(
-      `UPDATE aieq_friend_invites SET claimed_by_user_id=$2,claimed_at=COALESCE(claimed_at,now()) WHERE token=$1`,
+      `UPDATE aieq_friend_invites SET claimed_by_user_id=$2,
+       claimed_at=COALESCE(claimed_at,now()),status='claimed' WHERE token=$1`,
       [token, userId],
     )
+    const hasConfirmedProfile = await client.query(`SELECT 1 FROM aieq_profiles WHERE user_id=$1`, [userId])
+    if (hasConfirmedProfile.rowCount) {
+      await finalizeClaimedInvites(client, userId)
+      return 'connected'
+    }
+    return 'pending'
   })
 }
 

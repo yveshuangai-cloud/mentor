@@ -14,7 +14,7 @@
 3. **持久化站：完成。** PostgreSQL append-only 事件、答案 projection、session row lock、單一進行中 session 限制。
 4. **LINE 站：完成。** 明確口令才啟動，不扣點、不進一般對話記憶；舊卡片會回到目前進度。
 5. **LIFF 站：完成。** 後端把原始 ID Token 送至 LINE `/oauth2/v2.1/verify`；不信任前端提交的 user id 或 profile。
-6. **社交站：完成。** LINE Target Picker 只負責分享限時邀請；系統不取得 LINE 好友名單。被邀請者主動接受後才建立 AIEQ friendship。
+6. **社交站：完成。** LINE Target Picker 只負責分享限時邀請；系統不取得 LINE 好友名單。被邀請者認領後先進入 pending，只有完成並確認結果才在同一交易建立 AIEQ friendship。
 7. **隱私站：完成。** 結果確認、朋友圈可見與饅頭個人化同意彼此獨立；提供完整 AIEQ 資料刪除。
 8. **視覺站：完成。** 16 型瑞士現代主義動物 PNG；四碼由 UI 疊字，不交給圖片模型生成。
 
@@ -57,6 +57,8 @@ LINE text/postback
 4. Messaging API webhook 設為 `https://<PUBLIC_BASE_URL>/api/webhook/line`。
 5. 注入 `LINE_CHANNEL_TOKEN`、`LINE_CHANNEL_SECRET`、`LINE_LOGIN_CHANNEL_ID`、`LIFF_ID`、`PUBLIC_BASE_URL`。
 6. 套用 migration，先在測試 OA 驗收，再決定是否部署正式服務。
+
+逐畫面操作與雙人驗收流程見 `docs/aieq/LINE-LIFF-STAGING-GUIDE.md`。
 
 ## 驗證命令
 
