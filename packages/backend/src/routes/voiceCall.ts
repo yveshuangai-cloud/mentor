@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type WebSocket from 'ws'
 import { RoomAgentDispatch, RoomConfiguration } from '@livekit/protocol'
-import { AccessToken } from 'livekit-server-sdk'
+import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
 import { config } from '../config.js'
 import { platformQuery } from '../db/index.js'
 import { forTenant } from '../db/tenantDb.js'
@@ -27,11 +27,38 @@ function sendJson(socket: WebSocket, value: unknown): void {
   if (socket.readyState === 1) socket.send(JSON.stringify(value))
 }
 
+let livekitHealthCache: { checkedAt: number; ok: boolean; note: string } = {
+  checkedAt: 0,
+  ok: false,
+  note: 'LiveKit not checked',
+}
+
+async function probeLiveKit(): Promise<{ ok: boolean; note: string }> {
+  const configured = config.livekitApiKey !== 'not-configured'
+    && config.livekitApiSecret !== 'not-configured'
+    && !config.livekitUrl.includes('not-configured')
+  if (!configured) return { ok: false, note: 'LiveKit not configured' }
+  if (Date.now() - livekitHealthCache.checkedAt < 30_000) return livekitHealthCache
+  try {
+    const client = new RoomServiceClient(
+      config.livekitUrl.replace(/^wss:/, 'https:'),
+      config.livekitApiKey,
+      config.livekitApiSecret,
+    )
+    await client.listRooms()
+    livekitHealthCache = { checkedAt: Date.now(), ok: true, note: 'LiveKit connected' }
+  } catch {
+    livekitHealthCache = { checkedAt: Date.now(), ok: false, note: 'LiveKit unreachable' }
+  }
+  return livekitHealthCache
+}
+
 export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
   app.get('/health/services', async (_request, reply) => {
     const intelligenceConfigured = config.bridgeSecret !== '' || config.anthropicApiKey !== 'not-configured'
     const hearingConfigured = config.deepgramApiKey !== 'not-configured'
     const speakingConfigured = voiceConfigured()
+    const livekit = await probeLiveKit()
 
     let memoryOk = false
     let memoryNote = 'PostgreSQL unreachable'
@@ -57,6 +84,7 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
         ok: speakingConfigured,
         note: speakingConfigured ? 'MiniMax configured' : 'MiniMax not configured',
       },
+      livekit,
     }
 
     return reply

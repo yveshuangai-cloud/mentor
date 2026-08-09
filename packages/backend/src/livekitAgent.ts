@@ -187,11 +187,22 @@ const agent = defineAgent({
       vad: null,
       stt: new DeepgramSTT({
         apiKey: config.deepgramApiKey,
-        model: 'nova-3',
+        // Deepgram rejects several newer boolean query parameters for this
+        // project's zh-TW streaming model, even when their value is false.
+        // Undefined overrides keep the plugin URL on the proven minimal set.
+        model: 'nova-2',
         language: 'zh-TW',
+        sampleRate: 16_000,
         interimResults: true,
         smartFormat: true,
-        noDelay: true,
+        punctuate: undefined,
+        dictation: undefined,
+        diarize: undefined,
+        numerals: undefined,
+        noDelay: undefined,
+        fillerWords: undefined,
+        profanityFilter: undefined,
+        mipOptOut: undefined,
         endpointing: 250,
         utteranceEndMs: 700,
       }),

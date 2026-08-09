@@ -15,13 +15,16 @@ interface HealthData {
   memory: ServiceStatus;
   hearing: ServiceStatus;
   speaking: ServiceStatus;
+  livekit: ServiceStatus;
 }
 
+const unchecked = { ok: false, note: '尚未檢查' };
 const INITIAL: HealthData = {
-  intelligence: { ok: false, note: '尚未檢查' },
-  memory: { ok: false, note: '尚未檢查' },
-  hearing: { ok: false, note: '尚未檢查' },
-  speaking: { ok: false, note: '尚未檢查' },
+  intelligence: unchecked,
+  memory: unchecked,
+  hearing: unchecked,
+  speaking: unchecked,
+  livekit: unchecked,
 };
 
 export default function HealthIndicator({ micActive, micError }: HealthIndicatorProps) {
@@ -45,12 +48,13 @@ export default function HealthIndicator({ micActive, micError }: HealthIndicator
         }
       } catch {
         if (!cancelled) {
-          const unavailable = { ok: false, note: '健康檢查無法連線' };
+          const unavailable = { ok: false, note: '健康檢查目前無法連線' };
           setHealth({
             intelligence: unavailable,
             memory: unavailable,
             hearing: unavailable,
             speaking: unavailable,
+            livekit: unavailable,
           });
         }
       }
@@ -65,18 +69,23 @@ export default function HealthIndicator({ micActive, micError }: HealthIndicator
   }, []);
 
   const lights = [
-    { label: '智能', ...health.intelligence },
+    { label: '思考', ...health.intelligence },
     { label: '記憶', ...health.memory },
-    { label: '聽聲', ...health.hearing },
-    { label: '發聲', ...health.speaking },
-    { label: '麥克風', ok: micActive && !micError, note: micError ?? (micActive ? '麥克風運作中' : '麥克風尚未啟動') },
+    { label: '聽力', ...health.hearing },
+    { label: '聲音', ...health.speaking },
+    { label: 'LiveKit', ...health.livekit },
+    {
+      label: '麥克風',
+      ok: micActive && !micError,
+      note: micError ?? (micActive ? '麥克風運作中' : '麥克風尚未啟用'),
+    },
   ];
   const stale = lastUpdate > 0 && Date.now() - lastUpdate > 30_000;
 
   return (
     <div
       className="absolute top-[max(0.75rem,env(safe-area-inset-top))] left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-black/35 backdrop-blur-sm"
-      aria-label="語音服務健康狀態"
+      aria-label="饅頭語音服務健康狀態"
     >
       {lights.map((light) => (
         <div key={light.label} className="flex items-center gap-1" title={light.note}>
