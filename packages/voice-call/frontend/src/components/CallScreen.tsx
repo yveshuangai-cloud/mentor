@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { CallStatus, FelicityState } from '../hooks/useWebSocket';
+import BreathingOrb from './BreathingOrb';
 import HealthIndicator from './HealthIndicator';
 
 interface Props {
@@ -13,6 +14,8 @@ interface Props {
   onRetry: () => void;
   onToggleMute: () => void;
   onToggleSpeaker: () => void;
+  getMicVolume: () => number;
+  getRemoteVolume: () => number;
 }
 
 function useTimer(active: boolean): string {
@@ -42,8 +45,13 @@ export default function CallScreen(props: Props) {
 
   return (
     <main className="fixed inset-0 bg-gradient-to-b from-[#1f2937] to-[#0b1220] text-white flex flex-col items-center">
+      <BreathingOrb
+        getMicVolume={props.getMicVolume}
+        getRemoteVolume={props.getRemoteVolume}
+        active={active || ringing}
+      />
       <HealthIndicator micActive={props.micActive} micError={props.micError} />
-      <section className="flex-1 flex flex-col items-center justify-center px-8">
+      <section className="relative z-10 flex-1 flex flex-col items-center justify-center px-8">
         <img
           src="/avatar.jpg"
           alt="饅頭"
@@ -68,7 +76,7 @@ export default function CallScreen(props: Props) {
       </section>
 
       {(active || ringing) && (
-        <footer className="w-full max-w-md flex items-center justify-around px-8 pb-12">
+        <footer className="relative z-10 w-full max-w-md flex items-center justify-around px-8 pb-12">
           <Control label={props.isMuted ? '開啟麥克風' : '靜音'} active={props.isMuted} onClick={props.onToggleMute}>🎙</Control>
           <button onClick={props.onHangUp} aria-label="掛斷" className="w-16 h-16 rounded-full bg-red-500 text-2xl shadow-lg active:scale-90 transition-transform">×</button>
           <Control label={props.isSpeakerOn ? '關閉擴音' : '開啟擴音'} active={props.isSpeakerOn} onClick={props.onToggleSpeaker}>🔊</Control>
@@ -76,7 +84,7 @@ export default function CallScreen(props: Props) {
       )}
 
       {(ended || failed) && (
-        <footer className="pb-12 flex gap-3">
+        <footer className="relative z-10 pb-12 flex gap-3">
           {failed && <button onClick={props.onRetry} className="px-6 py-3 rounded-full bg-[#06C755]">重新連線</button>}
           <button onClick={props.onHangUp} className="px-6 py-3 rounded-full bg-white/10">關閉</button>
         </footer>
