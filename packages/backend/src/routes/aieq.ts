@@ -10,7 +10,9 @@ import {
   confirmProfile,
   createFriendInvite,
   deleteAieqData,
+  findActiveSession,
   findOrCreateSession,
+  getConfirmedProfileSession,
   getProfile,
   getSession,
   listFriends,
@@ -52,9 +54,35 @@ function present(session: Awaited<ReturnType<typeof findOrCreateSession>>) {
 export async function aieqRoutes(app: FastifyInstance): Promise<void> {
   app.get('/config', async () => ({ liffId: config.liffId }))
 
+  app.get('/entry', async (req, reply) => {
+    try {
+      const who = await identity(req)
+      const profile = await getProfile(who.userId)
+      const confirmed = profile ? await getConfirmedProfileSession(who.userId) : null
+      if (confirmed) return { mode: 'result', profile, ...present(confirmed) }
+
+      let active = await findActiveSession(who.userId)
+      if (active?.status === 'paused') {
+        active = (await appendEvent(who.userId, {
+          eventId: `liff-resume:${active.id}:${Date.now()}`,
+          sessionId: active.id,
+          source: 'system',
+          kind: 'resume',
+          occurredAt: new Date().toISOString(),
+        })).session
+      }
+      if (active) return { mode: 'assessment', profile: null, ...present(active) }
+      return { mode: 'intro', profile: null, session: null, question: null, result: null }
+    } catch (error) {
+      return reply.code(401).send({ error: (error as Error).message })
+    }
+  })
+
   app.post('/sessions', async (req, reply) => {
     try {
       const who = await identity(req)
+      const confirmed = await getConfirmedProfileSession(who.userId)
+      if (confirmed) return { mode: 'result', profile: await getProfile(who.userId), ...present(confirmed) }
       let session = await findOrCreateSession(who.userId)
       if (session.status === 'paused') {
         session = (await appendEvent(who.userId, {
@@ -65,7 +93,7 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
           occurredAt: new Date().toISOString(),
         })).session
       }
-      return present(session)
+      return { mode: 'assessment', profile: null, ...present(session) }
     } catch (error) {
       return reply.code(401).send({ error: (error as Error).message })
     }

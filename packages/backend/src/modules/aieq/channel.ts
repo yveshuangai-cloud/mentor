@@ -2,11 +2,11 @@ import { config } from '../../config.js'
 import type { LineMessage } from '../line.js'
 import { buildResultFlex, buildThreeChoiceFlex } from './flex.js'
 import { AIEQ_QUESTIONS } from './questions.js'
-import { appendEvent, findActiveSession, findOrCreateSession, getSession } from './repository.js'
+import { appendEvent, findActiveSession, findOrCreateSession, getConfirmedProfileSession, getSession } from './repository.js'
 import { freeTextToAnswerEvent } from './stateMachine.js'
 import { scoreAssessment } from './scoring.js'
 
-const START_RE = /^(?:開始|我要測|重測|繼續)?\s*(?:AIEQ|AI\s*EQ|AI人格測驗|AI時代人格)(?:測驗|測評)?[！!。\s]*$/i
+const START_RE = /^(?:開始|我要測|繼續)?\s*(?:AIEQ|AI\s*EQ|AI人格測驗|AI時代人格)(?:測驗|測評)?[！!。\s]*$/i
 const PAUSE_RE = /^(?:暫停|先休息|中斷)(?:測驗|測評)?$/
 const RESUME_RE = /^(?:繼續|繼續作答|恢復)(?:測驗|測評)?$/
 const BACK_RE = /^(?:上一題|回上一題|修改上一題)$/
@@ -40,6 +40,8 @@ function nextMessages(session: Awaited<ReturnType<typeof findOrCreateSession>>):
 }
 
 export async function startAieq(userId: number, tenantId?: number): Promise<LineMessage[]> {
+  const confirmed = await getConfirmedProfileSession(userId)
+  if (confirmed) return resultMessages(confirmed)
   const session = await findOrCreateSession(userId, tenantId)
   if (session.status === 'paused') {
     const transition = await appendEvent(userId, {

@@ -81,7 +81,13 @@ try {
     personalizationConsent: false,
   })
   assert.ok(await getProfile(user.rows[0].id), 'confirmed profile must be readable')
+  assert.equal(
+    (await findOrCreateSession(user.rows[0].id)).id,
+    session.id,
+    'confirmed users must return the canonical result instead of starting another session',
+  )
   const invite = await createFriendInvite(user.rows[0].id)
+  assert.equal((await getProfile(user.rows[0].id))?.visibility, 'friends')
   assert.equal(await claimFriendInvite(friend.rows[0].id, invite.token), 'pending')
   assert.equal((await listFriends(friend.rows[0].id)).length, 0, 'claiming alone must not create friendship')
 

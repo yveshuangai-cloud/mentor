@@ -40,33 +40,17 @@ export function buildThreeChoiceFlex(sessionId: string, question: AieqQuestion):
           },
         })),
         {
-          type: 'box',
-          layout: 'horizontal',
-          spacing: 'sm',
-          contents: [
-            {
-              type: 'button',
-              height: 'sm',
-              action: {
-                type: 'postback',
-                label: '不確定／跳過',
-                data: new URLSearchParams({
-                  action: 'aieq_uncertain',
-                  session_id: sessionId,
-                  question_id: question.id,
-                }).toString(),
-              },
-            },
-            {
-              type: 'button',
-              height: 'sm',
-              action: {
-                type: 'postback',
-                label: '回上一題',
-                data: new URLSearchParams({ action: 'aieq_back', session_id: sessionId }).toString(),
-              },
-            },
-          ],
+          type: 'button',
+          height: 'sm',
+          action: {
+            type: 'postback',
+            label: '不確定',
+            data: new URLSearchParams({
+              action: 'aieq_uncertain',
+              session_id: sessionId,
+              question_id: question.id,
+            }).toString(),
+          },
         },
       ],
     },
@@ -76,7 +60,7 @@ export function buildThreeChoiceFlex(sessionId: string, question: AieqQuestion):
       contents: [
         {
           type: 'text',
-          text: '請選最接近你平常行為的答案；沒有標準答案。',
+          text: '選最接近平常行為的一項。要修改時輸入「回上一題」。',
           size: 'xs',
           color: '#777777',
           wrap: true,

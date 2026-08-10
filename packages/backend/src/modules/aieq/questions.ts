@@ -216,56 +216,6 @@ export const AIEQ_QUESTIONS: readonly AieqQuestion[] = [
       }, ['等待指示', '先做別的']),
     ],
   },
-  {
-    id: 'q09_people_impact',
-    scenario: 'AI 建議的方案能省很多成本，但可能讓一群同事的工作大幅改變。',
-    prompt: '在支持方案前，你最想先確認什麼？',
-    validation: 'reverse',
-    dimensions: ['TF', 'verification', 'ai_collaboration', 'ambiguity_tolerance'],
-    options: [
-      option('a', '效益是否算得準', '成本、品質與風險數據是否經得起查證', {
-        TF: -1,
-        verification: 1,
-        ai_collaboration: 0.1,
-      }, ['效益數據', '數據準不準']),
-      option('b', '人如何被支持', '受影響的人是否有參與、轉型與支持方案', {
-        TF: 1,
-        verification: 0.45,
-        ai_collaboration: 1,
-      }, ['轉型支持', '受影響的人']),
-      option('c', '是否能先做試點', '是否能先做可逆的小規模試點，同時觀察效益與人的影響', {
-        TF: 0,
-        verification: 0.9,
-        ai_collaboration: 0.7,
-        ambiguity_tolerance: 0.5,
-      }, ['先做試點', '小規模測試']),
-    ],
-  },
-  {
-    id: 'q10_monthly_change',
-    scenario: '你熟悉的 AI 工具幾乎每個月都改版，原有技巧很快過時。',
-    prompt: '你最可能採用哪種做法？',
-    validation: 'cross_check',
-    dimensions: ['SN', 'transition_speed', 'continuous_learning', 'verification'],
-    options: [
-      option('a', '追蹤原理與趨勢', '理解底層原理與趨勢，工具改版時再推演新用法', {
-        SN: 1,
-        transition_speed: 0.7,
-        continuous_learning: 0.85,
-      }, ['追蹤趨勢', '理解原理']),
-      option('b', '維護操作清單', '維護實際操作清單，每次改版就更新步驟', {
-        SN: -1,
-        transition_speed: 0.45,
-        continuous_learning: 0.75,
-        verification: 0.45,
-      }, ['操作清單', '更新步驟']),
-      option('c', '固定用舊版本', '只要還能工作，就盡量維持熟悉的舊做法', {
-        SN: -0.35,
-        transition_speed: -1,
-        continuous_learning: -0.9,
-      }, ['維持舊做法', '不想改版']),
-    ],
-  },
 ]
 
 export function getQuestion(questionId: string): AieqQuestion | undefined {

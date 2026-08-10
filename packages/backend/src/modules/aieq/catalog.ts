@@ -47,6 +47,6 @@ export function animalForCode(code: string): AieqAnimal {
     imagePath: '/aieq/assets/animals/swiss-modernist/aieq-16-contact-sheet.png',
     strength: '仍在蒐集跨情境證據',
     blindSpot: '目前證據不足，不宜過早定型',
-    growthRoute: '補答或重測後再確認結果',
+    growthRoute: '補充情境後再確認結果',
   }
 }

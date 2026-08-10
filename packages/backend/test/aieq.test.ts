@@ -52,6 +52,10 @@ function runAnswers(optionId: 'a' | 'b' | 'c'): AieqSession {
 }
 
 describe('AIEQ answer state machine', () => {
+  it('uses eight core scenarios for a two-minute assessment', () => {
+    expect(AIEQ_QUESTIONS).toHaveLength(8)
+  })
+
   it('uses eventId as an idempotency key for duplicate LINE postbacks', () => {
     const session = createAieqSession('session-1', NOW)
     const event = cardAnswer('session-1', 'line-event-1', AIEQ_QUESTIONS[0].id, 'a')
@@ -303,5 +307,6 @@ describe('AIEQ presentation prototypes', () => {
     expect(isAieqStartText('開始 AIEQ')).toBe(true)
     expect(isAieqStartText('繼續AIEQ')).toBe(true)
     expect(isAieqStartText('我今天心情不錯')).toBe(false)
+    expect(isAieqStartText('重測 AIEQ')).toBe(false)
   })
 })

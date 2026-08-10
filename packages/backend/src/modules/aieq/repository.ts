@@ -88,6 +88,11 @@ async function loadWith(client: pg.PoolClient, id: string, userId: number, lock 
 
 export async function findOrCreateSession(userId: number, tenantId?: number): Promise<AieqSession> {
   return withTransaction(async (client) => {
+    const canonical = await client.query<{ session_id: string }>(
+      `SELECT session_id FROM aieq_profiles WHERE user_id=$1`, [userId],
+    )
+    if (canonical.rows[0]) return (await loadWith(client, canonical.rows[0].session_id, userId))!
+
     const existing = await client.query<{ id: string }>(
       `SELECT id FROM aieq_sessions WHERE user_id = $1 AND status IN ('in_progress','paused')
        ORDER BY updated_at DESC LIMIT 1 FOR UPDATE`,
@@ -115,6 +120,13 @@ export async function findOrCreateSession(userId: number, tenantId?: number): Pr
 
 export async function getSession(userId: number, sessionId: string): Promise<AieqSession | null> {
   return withTransaction((client) => loadWith(client, sessionId, userId))
+}
+
+export async function getConfirmedProfileSession(userId: number): Promise<AieqSession | null> {
+  const result = await platformQuery<{ session_id: string }>(
+    `SELECT session_id FROM aieq_profiles WHERE user_id=$1`, [userId],
+  )
+  return result.rows[0] ? getSession(userId, result.rows[0].session_id) : null
 }
 
 export async function findActiveSession(userId: number): Promise<AieqSession | null> {
@@ -178,12 +190,17 @@ export async function confirmProfile(userId: number, sessionId: string, options:
     const result = scoreAssessment(session)
     if (result.preferenceCode.includes('X')) throw new Error('insufficient_preference_evidence')
     const animal = animalForCode(result.preferenceCode)
+    const pendingInvite = await client.query(
+      `SELECT 1 FROM aieq_friend_invites
+       WHERE claimed_by_user_id=$1 AND status='claimed' AND expires_at>now() LIMIT 1`, [userId],
+    )
+    const visibility = options.visibleToFriends || pendingInvite.rowCount ? 'friends' : 'private'
     await client.query(
       `INSERT INTO aieq_profiles (user_id,session_id,type_code,animal_slug,visibility)
        VALUES ($1,$2,$3,$4,$5)
        ON CONFLICT (user_id) DO UPDATE SET session_id=EXCLUDED.session_id,type_code=EXCLUDED.type_code,
        animal_slug=EXCLUDED.animal_slug,visibility=EXCLUDED.visibility,confirmed_at=now(),updated_at=now()`,
-      [userId, sessionId, result.preferenceCode, animal.slug, options.visibleToFriends ? 'friends' : 'private'],
+      [userId, sessionId, result.preferenceCode, animal.slug, visibility],
     )
     await client.query(
       `UPDATE aieq_sessions SET personalization_consent=$2,
@@ -196,9 +213,9 @@ export async function confirmProfile(userId: number, sessionId: string, options:
 
 export async function getProfile(userId: number): Promise<Record<string, unknown> | null> {
   const result = await platformQuery<{
-    type_code: string; animal_slug: string; visibility: string; confirmed_at: Date; result: unknown
+    session_id: string; type_code: string; animal_slug: string; visibility: string; confirmed_at: Date; result: unknown
   }>(
-    `SELECT p.type_code,p.animal_slug,p.visibility,p.confirmed_at,s.result
+    `SELECT p.session_id,p.type_code,p.animal_slug,p.visibility,p.confirmed_at,s.result
      FROM aieq_profiles p JOIN aieq_sessions s ON s.id=p.session_id WHERE p.user_id=$1`, [userId],
   )
   const row = result.rows[0]
@@ -206,14 +223,18 @@ export async function getProfile(userId: number): Promise<Record<string, unknown
 }
 
 export async function createFriendInvite(userId: number): Promise<{ token: string; expiresAt: string }> {
-  const profile = await platformQuery(`SELECT 1 FROM aieq_profiles WHERE user_id=$1`, [userId])
-  if (!profile.rowCount) throw new Error('confirmed_profile_required')
-  const token = randomBytes(18).toString('base64url')
-  const result = await platformQuery<{ expires_at: Date }>(
-    `INSERT INTO aieq_friend_invites (token,inviter_user_id,expires_at)
-     VALUES ($1,$2,now()+interval '7 days') RETURNING expires_at`, [token, userId],
-  )
-  return { token, expiresAt: result.rows[0].expires_at.toISOString() }
+  return withTransaction(async (client) => {
+    const profile = await client.query(`SELECT 1 FROM aieq_profiles WHERE user_id=$1 FOR UPDATE`, [userId])
+    if (!profile.rowCount) throw new Error('confirmed_profile_required')
+    const token = randomBytes(18).toString('base64url')
+    const result = await client.query<{ expires_at: Date }>(
+      `INSERT INTO aieq_friend_invites (token,inviter_user_id,expires_at)
+       VALUES ($1,$2,now()+interval '7 days') RETURNING expires_at`, [token, userId],
+    )
+    // Pressing “invite” is the explicit moment the user chooses social visibility.
+    await client.query(`UPDATE aieq_profiles SET visibility='friends',updated_at=now() WHERE user_id=$1`, [userId])
+    return { token, expiresAt: result.rows[0].expires_at.toISOString() }
+  })
 }
 
 async function finalizeClaimedInvites(client: pg.PoolClient, recipientUserId: number): Promise<number> {
