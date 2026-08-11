@@ -37,6 +37,7 @@ const REQUIRED_FILES = [
   'skills/web-search.md',
   'skills/document-reading.md',
   'skills/clarifying-requests.md',
+  'skills/aieq-assessment.md',
   'skills/mantou-emotional-voice/SKILL.md',
 ]
 
@@ -48,6 +49,7 @@ const BOTTOM_LINES: [string, string[]][] = [
   ['skills/scheduling.md', ['[SCHEDULE']],                     // 標籤鐵律
   ['skills/promises.md', ['[REMIND']],
   ['skills/reading-together.md', ['[NOTE']],
+  ['skills/aieq-assessment.md', ['不自行加權', '非心理診斷', '三種獨立同意']],
 ]
 
 // PII 掃描（同通話包洗淨那套）

@@ -14,6 +14,7 @@ COPY packages/voice-call/frontend/package.json packages/voice-call/frontend/
 RUN npm ci --workspace packages/backend --include-workspace-root=false
 
 COPY packages/backend packages/backend
+COPY assets/aieq assets/aieq
 COPY soul soul
 
 RUN npm run soul:lint -w packages/backend \

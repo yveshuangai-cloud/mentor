@@ -1,5 +1,6 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
+import fastifyStatic from '@fastify/static'
 import { readFile } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,6 +10,7 @@ import { processQueuedWebhookEvents, webhookRoutes } from './routes/webhook.js'
 import { adminRoutes } from './routes/admin.js'
 import { paymentRoutes } from './routes/payments.js'
 import { mediaRoutes } from './routes/media.js'
+import { aieqRoutes } from './routes/aieq.js'
 import { expireSweep } from './modules/points.js'
 import { runNightlyMemory } from './modules/memory/nightly.js'
 import { fireDuePromises } from './modules/proactive/promises.js'
@@ -24,7 +26,13 @@ async function bootstrap(): Promise<void> {
   await autoMigrate(log)
 
   await app.register(cors, { origin: false }) // 後台 UI 上線時再開白名單
+  await app.register(fastifyStatic, {
+    root: join(dirname(fileURLToPath(import.meta.url)), '../../../assets/aieq'),
+    prefix: '/aieq/assets/',
+    decorateReply: false,
+  })
   await app.register(webhookRoutes, { prefix: '/api/webhook' })
+  await app.register(aieqRoutes, { prefix: '/api/aieq' })
   await app.register(adminRoutes, { prefix: '/api/admin' })
   await app.register(paymentRoutes, { prefix: '/api/payments' })
   await app.register(mediaRoutes, { prefix: '/media' })
@@ -34,6 +42,11 @@ async function bootstrap(): Promise<void> {
   // 後台 UI（單檔、免建置；權限靠 UI 內輸入的 X-Admin-Token 打 admin API）
   app.get('/admin', async (_req, reply) => {
     const html = await readFile(join(dirname(fileURLToPath(import.meta.url)), '../public/admin.html'), 'utf8')
+    return reply.type('text/html; charset=utf-8').send(html)
+  })
+
+  app.get('/aieq', async (_req, reply) => {
+    const html = await readFile(join(dirname(fileURLToPath(import.meta.url)), '../public/aieq.html'), 'utf8')
     return reply.type('text/html; charset=utf-8').send(html)
   })
 

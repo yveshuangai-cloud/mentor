@@ -1,0 +1,27 @@
+{
+  "visualSystem": "AIEQ Swiss Modernist Animal Emblems v1",
+  "palette": {
+    "pink": "#D95F82",
+    "graphite": "#505158",
+    "warmWhite": "#F7F4F2"
+  },
+  "codePlacement": "upper-left overlay; typography is never generated inside the animal image",
+  "items": [
+    { "type": "ISTJ", "animal": "beaver", "file": "istj-beaver.png" },
+    { "type": "ISFJ", "animal": "penguin", "file": "isfj-penguin.png" },
+    { "type": "INFJ", "animal": "elephant", "file": "infj-elephant.png" },
+    { "type": "INTJ", "animal": "owl", "file": "intj-owl.png" },
+    { "type": "ISTP", "animal": "cat", "file": "istp-cat.png" },
+    { "type": "ISFP", "animal": "red-panda", "file": "isfp-red-panda.png" },
+    { "type": "INFP", "animal": "deer", "file": "infp-deer.png" },
+    { "type": "INTP", "animal": "octopus", "file": "intp-octopus.png" },
+    { "type": "ESTP", "animal": "cheetah", "file": "estp-cheetah.png" },
+    { "type": "ESFP", "animal": "parrot", "file": "esfp-parrot.png" },
+    { "type": "ENFP", "animal": "otter", "file": "enfp-otter.png" },
+    { "type": "ENTP", "animal": "crow", "file": "entp-crow.png" },
+    { "type": "ESTJ", "animal": "sheepdog", "file": "estj-sheepdog.png" },
+    { "type": "ESFJ", "animal": "bee", "file": "esfj-bee.png" },
+    { "type": "ENFJ", "animal": "dolphin", "file": "enfj-dolphin.png" },
+    { "type": "ENTJ", "animal": "orca", "file": "entj-orca.png" }
+  ]
+}
