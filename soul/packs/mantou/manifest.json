@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "pack": "mantou",
-  "version": "2026.08.09.2",
+  "version": "2026.08.11.1",
   "hash_algorithm": "sha256",
-  "generated_at": "2026-08-09T00:00:00.000Z",
+  "generated_at": "2026-08-11T00:00:00.000Z",
   "files": {
     "constitution.md": "af4729bd91cb90f5a1834405f0ce3424db8f06cd332a4220a916a3cdc1eb58b6",
     "persona.md": "2cbd2e471b5893f9808489b2fdfd2998301511e68b4a33a2a510bf842193b662",
@@ -21,6 +21,7 @@
     "skills/voice-clips.md": "9a6c9b48264e9c94c4f06f1ef861cb55a9540657e8cd3c8c7831c869bd79c24a",
     "skills/web-search.md": "a057e473f212651a8e3414a0d8191701ca71eccc6ad227b01800f64547e9bf36",
     "skills/document-reading.md": "4155f522e1a53b3d7fa3079cb1e0804ef05f3a1719188805e01065c9d0114657",
+    "skills/aieq-assessment.md": "39f00a121bf1a42e646c91595139aee8442a500e653db0732b2f7bae28ef33c9",
     "skills/mantou-emotional-voice/SKILL.md": "a5efc3295879a10e6588843ed4f766778d823b1182b456f6df8f2373ff7ebdb5"
   }
 }

@@ -10,6 +10,7 @@ import {
   createAieqSession,
   freeTextToAnswerEvent,
   scoreAssessment,
+  isAieqInfoText,
   isAieqStartText,
   transitionAieqSession,
   type AieqQuestion,
@@ -306,6 +307,10 @@ describe('AIEQ presentation prototypes', () => {
   it('only starts from explicit AIEQ phrases', () => {
     expect(isAieqStartText('開始 AIEQ')).toBe(true)
     expect(isAieqStartText('繼續AIEQ')).toBe(true)
+    expect(isAieqStartText('開始 AI人格誌')).toBe(true)
+    expect(isAieqStartText('AI人格誌')).toBe(false)
+    expect(isAieqInfoText('AI人格誌')).toBe(true)
+    expect(isAieqInfoText('AIEQ')).toBe(true)
     expect(isAieqStartText('我今天心情不錯')).toBe(false)
     expect(isAieqStartText('重測 AIEQ')).toBe(false)
   })

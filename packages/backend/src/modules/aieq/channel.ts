@@ -6,7 +6,10 @@ import { appendEvent, findActiveSession, findOrCreateSession, getConfirmedProfil
 import { freeTextToAnswerEvent } from './stateMachine.js'
 import { scoreAssessment } from './scoring.js'
 
-const START_RE = /^(?:開始|我要測|繼續)?\s*(?:AIEQ|AI\s*EQ|AI人格測驗|AI時代人格)(?:測驗|測評)?[！!。\s]*$/i
+const PRODUCT = '(?:AIEQ|AI\\s*EQ|AI人格誌|AI人格測驗|AI時代人格)'
+const INFO_RE = new RegExp(`^\\s*${PRODUCT}(?:測驗|測評)?[！!。\\s]*$`, 'i')
+const START_RE = new RegExp(`^(?:開始|我要測)\\s*${PRODUCT}(?:測驗|測評)?[！!。\\s]*$`, 'i')
+const RESUME_PRODUCT_RE = new RegExp(`^(?:繼續|繼續作答|恢復)\\s*${PRODUCT}(?:測驗|測評)?[！!。\\s]*$`, 'i')
 const PAUSE_RE = /^(?:暫停|先休息|中斷)(?:測驗|測評)?$/
 const RESUME_RE = /^(?:繼續|繼續作答|恢復)(?:測驗|測評)?$/
 const BACK_RE = /^(?:上一題|回上一題|修改上一題)$/
@@ -62,7 +65,19 @@ export async function handleAieqText(input: {
   text: string
   eventId: string
 }): Promise<LineMessage[] | null> {
-  if (START_RE.test(input.text) || RESUME_RE.test(input.text)) return startAieq(input.userId, input.tenantId)
+  if (START_RE.test(input.text) || RESUME_PRODUCT_RE.test(input.text) || RESUME_RE.test(input.text)) {
+    return startAieq(input.userId, input.tenantId)
+  }
+  if (INFO_RE.test(input.text)) {
+    const confirmed = await getConfirmedProfileSession(input.userId)
+    if (confirmed) return resultMessages(confirmed)
+    const active = await findActiveSession(input.userId)
+    if (active) return nextMessages(active)
+    return [{
+      type: 'text',
+      text: 'AI 人格誌會用 8 個 AI 工作情境，在約兩分鐘內整理你的四組行為偏好與六項可發展能力。它不是心理診斷，也不是官方 MBTI® 測驗。想開始時，跟我說「開始 AI 人格誌」。',
+    }]
+  }
   const session = await findActiveSession(input.userId)
   if (!session) return null
   if (session.status === 'completed') return null
@@ -123,5 +138,9 @@ export async function handleAieqPostback(input: {
 }
 
 export function isAieqStartText(text: string): boolean {
-  return START_RE.test(text) || RESUME_RE.test(text)
+  return START_RE.test(text) || RESUME_PRODUCT_RE.test(text) || RESUME_RE.test(text)
+}
+
+export function isAieqInfoText(text: string): boolean {
+  return INFO_RE.test(text)
 }

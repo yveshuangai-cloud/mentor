@@ -22,6 +22,7 @@ const files = [
   'skills/voice-clips.md',
   'skills/web-search.md',
   'skills/document-reading.md',
+  'skills/aieq-assessment.md',
   'skills/mantou-emotional-voice/SKILL.md',
 ]
 
@@ -30,9 +31,9 @@ const contents = await Promise.all(files.map((file) => readFile(join(packDir, fi
 const manifest = {
   schema_version: 1,
   pack: 'mantou',
-  version: '2026.08.09.2',
+  version: '2026.08.11.1',
   hash_algorithm: 'sha256',
-  generated_at: '2026-08-09T00:00:00.000Z',
+  generated_at: '2026-08-11T00:00:00.000Z',
   files: Object.fromEntries(files.map((file, index) => [file, hash(contents[index])])),
 }
 
