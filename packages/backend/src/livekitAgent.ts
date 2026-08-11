@@ -282,6 +282,10 @@ const agent = defineAgent({
 
     const scheduleTranscriptCommit = () => {
       if (transcriptCommitTimer) clearTimeout(transcriptCommitTimer)
+      // Deepgram may emit a short finalized phrase followed by another segment
+      // for the same utterance. Give very short finals a wider merge window so
+      // "你好，饅頭……" does not trigger two assistant replies.
+      const commitDelayMs = pendingTranscript.trim().length <= 4 ? 1_400 : 600
       transcriptCommitTimer = setTimeout(() => {
         const userInput = pendingTranscript.trim()
         pendingTranscript = ''
@@ -302,7 +306,11 @@ const agent = defineAgent({
           chatCtx.addMessage({ role: 'user', content: userInput })
           const reply = await mantou.llmNode(chatCtx, mantou.toolCtx, {})
           if (!reply) return
-          session.say(reply as ReadableStream<string>, {
+          const [transcriptText, spokenText] = (reply as ReadableStream<string>).tee()
+          const audio = await mantou.ttsNode(spokenText, {})
+          if (!audio) throw new Error('livekit_custom_tts_stream_missing')
+          session.say(transcriptText, {
+            audio,
             allowInterruptions: false,
             addToChatCtx: false,
           })
@@ -313,7 +321,7 @@ const agent = defineAgent({
             error: error instanceof Error ? error.message : String(error),
           }))
         })
-      }, 600)
+      }, commitDelayMs)
     }
 
     session.on(AgentSessionEventTypes.MetricsCollected, (event) => {
