@@ -72,6 +72,18 @@ const rms = Math.sqrt(energy / pcmSamples.length)
 console.info(JSON.stringify({ event: 'e2e_pcm', durationMs: Math.round(pcmSamples.length / 24), peak, rms: Math.round(rms) }))
 if (peak < 100 || rms < 20) throw new Error('e2e_tts_pcm_silent')
 
+// Publish the same rate as a browser/WebRTC microphone. Avoid rtc-node's
+// AudioResampler in the acceptance test: it previously turned intelligible
+// 24 kHz MiniMax speech into PCM that Deepgram could not recognize.
+const pcm48Samples = new Int16Array(pcmSamples.length * 2)
+for (let index = 0; index < pcmSamples.length; index += 1) {
+  const current = pcmSamples[index] ?? 0
+  const next = pcmSamples[index + 1] ?? current
+  pcm48Samples[index * 2] = current
+  pcm48Samples[index * 2 + 1] = Math.round((current + next) / 2)
+}
+const pcm48 = Buffer.from(pcm48Samples.buffer, pcm48Samples.byteOffset, pcm48Samples.byteLength)
+
 // Prove the source utterance is intelligible to the exact Deepgram model before
 // involving LiveKit transport. Keep it at MiniMax's native 24 kHz rate.
 const wav24 = Buffer.alloc(44 + pcm.length)
@@ -101,9 +113,36 @@ const rest24Transcript = rest24Json.results?.channels?.[0]?.alternatives?.[0]?.t
 console.info(JSON.stringify({ event: 'e2e_deepgram_rest_24k', ok: rest24Response.ok, transcriptChars: rest24Transcript.length }))
 if (!rest24Transcript) throw new Error('e2e_deepgram_rest_24k_empty')
 
+const wav48 = Buffer.alloc(44 + pcm48.length)
+wav48.write('RIFF', 0)
+wav48.writeUInt32LE(36 + pcm48.length, 4)
+wav48.write('WAVE', 8)
+wav48.write('fmt ', 12)
+wav48.writeUInt32LE(16, 16)
+wav48.writeUInt16LE(1, 20)
+wav48.writeUInt16LE(1, 22)
+wav48.writeUInt32LE(48_000, 24)
+wav48.writeUInt32LE(96_000, 28)
+wav48.writeUInt16LE(2, 32)
+wav48.writeUInt16LE(16, 34)
+wav48.write('data', 36)
+wav48.writeUInt32LE(pcm48.length, 40)
+pcm48.copy(wav48, 44)
+const rest48Response = await fetch('https://api.deepgram.com/v1/listen?model=nova-2&language=zh-TW&smart_format=true', {
+  method: 'POST',
+  headers: { Authorization: `Token ${config.deepgramApiKey}`, 'Content-Type': 'audio/wav' },
+  body: wav48,
+})
+const rest48Json = await rest48Response.json() as {
+  results?: { channels?: Array<{ alternatives?: Array<{ transcript?: string }> }> }
+}
+const rest48Transcript = rest48Json.results?.channels?.[0]?.alternatives?.[0]?.transcript?.trim() ?? ''
+console.info(JSON.stringify({ event: 'e2e_deepgram_rest_48k', ok: rest48Response.ok, transcriptChars: rest48Transcript.length }))
+if (!rest48Transcript) throw new Error('e2e_deepgram_rest_48k_empty')
+
 try {
   await room.connect(config.livekitUrl, await token.toJwt(), { autoSubscribe: true })
-  const source = new AudioSource(24_000, 1, 1_000)
+  const source = new AudioSource(48_000, 1, 1_000)
   const track = LocalAudioTrack.createAudioTrack('e2e-microphone', source)
   const options = new TrackPublishOptions()
   options.source = TrackSource.SOURCE_MICROPHONE
@@ -119,16 +158,16 @@ try {
   // keep producing frames and do not have this race.
   await new Promise((resolve) => setTimeout(resolve, 3_000))
 
-  const frameBytes = 2_400 * 2 // 100 ms, signed 16-bit mono at 24 kHz
-  for (let offset = 0; offset < pcm.length; offset += frameBytes) {
-    const chunk = pcm.subarray(offset, Math.min(offset + frameBytes, pcm.length))
+  const frameBytes = 4_800 * 2 // 100 ms, signed 16-bit mono at 48 kHz
+  for (let offset = 0; offset < pcm48.length; offset += frameBytes) {
+    const chunk = pcm48.subarray(offset, Math.min(offset + frameBytes, pcm48.length))
     const samples = new Int16Array(chunk.buffer, chunk.byteOffset, Math.floor(chunk.byteLength / 2))
-    await source.captureFrame(new AudioFrame(samples, 24_000, 1, samples.length))
+    await source.captureFrame(new AudioFrame(samples, 48_000, 1, samples.length))
   }
-  const silence = new Int16Array(24_000 * 2)
-  for (let offset = 0; offset < silence.length; offset += 2_400) {
-    const samples = silence.subarray(offset, offset + 2_400)
-    await source.captureFrame(new AudioFrame(samples, 24_000, 1, samples.length))
+  const silence = new Int16Array(48_000 * 2)
+  for (let offset = 0; offset < silence.length; offset += 4_800) {
+    const samples = silence.subarray(offset, offset + 4_800)
+    await source.captureFrame(new AudioFrame(samples, 48_000, 1, samples.length))
   }
 
   await Promise.race([

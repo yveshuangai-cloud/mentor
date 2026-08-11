@@ -313,7 +313,16 @@ const agent = defineAgent({
       ).catch((error) => console.warn('LiveKit session close persistence failed', error))
     })
 
-    await session.start({ agent: mantou, room: ctx.room })
+    await session.start({
+      agent: mantou,
+      room: ctx.room,
+      // RoomIO defaults microphone input to 24 kHz. That forced a 48→24 kHz
+      // conversion here and then a second 24→48 kHz rtc-node resample in the
+      // Deepgram stream. The double conversion produced active audio tracks
+      // with no recognizable speech. Preserve WebRTC's native 48 kHz from the
+      // room all the way into Deepgram.
+      inputOptions: { audioSampleRate: 48_000, audioNumChannels: 1 },
+    })
   },
 })
 
