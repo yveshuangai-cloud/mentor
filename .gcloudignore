@@ -12,3 +12,5 @@ docs
 .codex-tools
 .codex-remote-attachments
 .tools
+output
+/*.jpg
