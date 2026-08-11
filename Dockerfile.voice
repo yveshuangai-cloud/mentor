@@ -19,6 +19,7 @@ RUN npm ci \
 
 COPY packages/backend packages/backend
 COPY packages/voice-call/frontend packages/voice-call/frontend
+COPY assets/aieq assets/aieq
 COPY soul soul
 
 RUN npm run soul:lint -w packages/backend \
