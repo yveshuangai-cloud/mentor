@@ -282,10 +282,10 @@ const agent = defineAgent({
 
     const scheduleTranscriptCommit = () => {
       if (transcriptCommitTimer) clearTimeout(transcriptCommitTimer)
-      // Deepgram may finalize one segment and begin the next roughly 750 ms
-      // later. A 900 ms quiet window merges those segments without the old
-      // multi-second "正在想" delay or duplicate assistant replies.
-      const commitDelayMs = 900
+      // Deepgram can finalize one segment and begin the next more than one
+      // second later for Mandarin punctuation. A 1.5 s quiet window merges the
+      // whole utterance; this small bounded delay prevents duplicate replies.
+      const commitDelayMs = 1_500
       transcriptCommitTimer = setTimeout(() => {
         const userInput = pendingTranscript.trim()
         pendingTranscript = ''
