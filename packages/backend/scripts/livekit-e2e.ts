@@ -163,11 +163,13 @@ try {
     const chunk = pcm48.subarray(offset, Math.min(offset + frameBytes, pcm48.length))
     const samples = new Int16Array(chunk.buffer, chunk.byteOffset, Math.floor(chunk.byteLength / 2))
     await source.captureFrame(new AudioFrame(samples, 48_000, 1, samples.length))
+    await new Promise((resolve) => setTimeout(resolve, 100))
   }
   const silence = new Int16Array(48_000 * 2)
   for (let offset = 0; offset < silence.length; offset += 4_800) {
     const samples = silence.subarray(offset, offset + 4_800)
     await source.captureFrame(new AudioFrame(samples, 48_000, 1, samples.length))
+    await new Promise((resolve) => setTimeout(resolve, 100))
   }
 
   await Promise.race([

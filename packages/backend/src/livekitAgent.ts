@@ -232,6 +232,12 @@ const agent = defineAgent({
     })
 
     const session = new voice.AgentSession({
+      // The framework-provisioned inference VAD consumed room audio but the
+      // parallel STT branch never emitted usage or transcript events in the
+      // production JS 1.6.2 pipeline. Deepgram already emits SpeechStarted and
+      // EndOfSpeech for turnDetection='stt', so keep the base call path on that
+      // single, verified detector until adaptive interruption is isolated.
+      vad: null,
       stt: new DeepgramSTT({
         apiKey: config.deepgramApiKey,
         // Deepgram rejects several newer boolean query parameters for this
@@ -261,7 +267,7 @@ const agent = defineAgent({
       turnHandling: {
         turnDetection: 'stt',
         endpointing: { mode: 'fixed', minDelay: 200, maxDelay: 800 },
-        interruption: { enabled: true, mode: 'vad', minDuration: 250, minWords: 1 },
+        interruption: { enabled: false, mode: 'vad', minDuration: 250, minWords: 1 },
         preemptiveGeneration: { enabled: true, preemptiveTts: false },
       },
       userAwayTimeout: null,
