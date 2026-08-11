@@ -6,6 +6,7 @@ import {
   LocalAudioTrack,
   Room,
   RoomEvent,
+  TrackKind,
   TrackPublishOptions,
   TrackSource,
   dispose,
@@ -39,7 +40,7 @@ let resolveReply!: () => void
 const reply = new Promise<void>((resolve) => { resolveReply = resolve })
 
 room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
-  if (track.kind !== 0) return
+  if (track.kind !== TrackKind.KIND_AUDIO) return
   agentTrackSeen = true
   void (async () => {
     for await (const frame of new AudioStream(track, { sampleRate: 24_000, numChannels: 1 })) {
