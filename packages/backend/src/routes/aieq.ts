@@ -52,7 +52,7 @@ function present(session: Awaited<ReturnType<typeof findOrCreateSession>>) {
 }
 
 export async function aieqRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/config', async () => ({ liffId: config.liffId }))
+  app.get('/config', async () => ({ liffId: config.aieqLiffId }))
 
   app.get('/entry', async (req, reply) => {
     try {
@@ -170,9 +170,9 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
     try {
       const who = await identity(req)
       const invite = await createFriendInvite(who.userId)
-      const entry = config.liffId === 'not-configured'
+      const entry = config.aieqLiffId === 'not-configured'
         ? `${config.publicBaseUrl}/aieq`
-        : `https://liff.line.me/${config.liffId}`
+        : `https://liff.line.me/${config.aieqLiffId}`
       return { ...invite, url: `${entry}?invite=${invite.token}` }
     } catch (error) {
       return reply.code(401).send({ error: (error as Error).message })

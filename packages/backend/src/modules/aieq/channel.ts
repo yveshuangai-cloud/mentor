@@ -31,7 +31,9 @@ function resultMessages(session: Awaited<ReturnType<typeof findOrCreateSession>>
     contents: buildResultFlex(
       result,
       config.publicBaseUrl,
-      config.liffId === 'not-configured' ? `${config.publicBaseUrl}/aieq` : `https://liff.line.me/${config.liffId}`,
+      config.aieqLiffId === 'not-configured'
+        ? `${config.publicBaseUrl}/aieq`
+        : `https://liff.line.me/${config.aieqLiffId}`,
     ),
   }]
 }
