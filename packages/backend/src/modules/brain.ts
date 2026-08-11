@@ -21,6 +21,7 @@ import {
   type WebSearchSource,
 } from './webSearch.js'
 import type { TenantRow, MemberRow, UserRow } from './tenancy.js'
+import type { ContextBlockObservation, TurnKernel } from './turnKernel/index.js'
 
 /**
  * 大腦（v1 精簡版）：組 prompt（🟢 core + 🟡 biography + 近期對話）→ 呼叫 Claude。
@@ -47,6 +48,8 @@ export interface BrainInput {
   signal?: AbortSignal
   onLlmFirstToken?: () => void
   onVoiceSentence?: (sentence: string) => void
+  /** Best-effort shadow observer. It must never participate in reply generation. */
+  turn?: TurnKernel
 }
 
 export interface BrainOutput {
@@ -73,15 +76,28 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     signal,
     onLlmFirstToken,
     onVoiceSentence,
+    turn,
   } = input
+  turn?.mark('brain.started')
   const db = forTenant(tenant.id)
   let llmFirstTokenEmitted = false
   let voiceSentenceEmitted = false
+  let requestCount = 0
+  const loadMs = new Map<string, number>()
+  const measured = async <T>(name: string, promise: Promise<T>): Promise<T> => {
+    const startedAt = Date.now()
+    try {
+      return await promise
+    } finally {
+      loadMs.set(name, Date.now() - startedAt)
+    }
+  }
 
   const observeStreamText = (fullText: string, delta: string) => {
     if (delta && !llmFirstTokenEmitted) {
       llmFirstTokenEmitted = true
       onLlmFirstToken?.()
+      turn?.mark('llm.first_token')
     }
     if (!voiceCall || voiceSentenceEmitted || !onVoiceSentence) return
     const trimmed = fullText.trimStart()
@@ -95,21 +111,21 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
 
   const character = await getCharacterForTenant(tenant)
   const [soul, biography, memory, semanticBlock, recentDocumentBlock, promisesBlock, nightSoul, truthCorrection, readingBlock, historyRes] = await Promise.all([
-    loadCharacterCore(character.slug),
-    renderBiography(tenant),
-    loadMemoryBlocks(tenant.id, user.id),
-    buildSemanticBlock(tenant.id, user.id, semanticQuery ?? message),
-    loadRecentDocumentContext(tenant.id, user.id, semanticQuery ?? message),
-    formatPromisesBlock(tenant.id, user.id),
-    config.enableNightSoul ? loadNightSoulBlock(tenant.id) : Promise.resolve(''),
-    buildTruthCorrection(tenant.id, user.id),
-    buildReadingBlock(tenant.id),
-    db.query<{ user_message: string | null; ai_response: string | null }>(
+    measured('soul', loadCharacterCore(character.slug)),
+    measured('biography', renderBiography(tenant)),
+    measured('memory', loadMemoryBlocks(tenant.id, user.id)),
+    measured('semantic_memory', buildSemanticBlock(tenant.id, user.id, semanticQuery ?? message)),
+    measured('documents', loadRecentDocumentContext(tenant.id, user.id, semanticQuery ?? message)),
+    measured('promises', formatPromisesBlock(tenant.id, user.id)),
+    measured('night_soul', config.enableNightSoul ? loadNightSoulBlock(tenant.id) : Promise.resolve('')),
+    measured('truth_correction', buildTruthCorrection(tenant.id, user.id)),
+    measured('reading', buildReadingBlock(tenant.id)),
+    measured('history', db.query<{ user_message: string | null; ai_response: string | null }>(
       `SELECT user_message, ai_response FROM conversations
        WHERE tenant_id = $1 AND user_id = $2
        ORDER BY created_at DESC LIMIT ${HISTORY_LIMIT}`,
       [user.id],
-    ),
+    )),
   ])
 
   const familyBridge = tenant.mode === 'family' ? await loadFamilyBridge(character.slug) : ''
@@ -182,6 +198,38 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     messages.push({ role: 'user', content: message })
   }
 
+  const serializedHistory = history
+    .flatMap((item) => [item.user_message ?? '', item.ai_response ?? ''])
+    .filter(Boolean)
+    .join('\n')
+  const diagnosticBlocks: ContextBlockObservation[] = [
+    { name: 'soul.pre_biography', content: soul.preBiography, loadMs: loadMs.get('soul'), counted: false },
+    { name: 'biography', content: biography, loadMs: loadMs.get('biography'), counted: false },
+    { name: 'memory.distilled', content: memory.distilledEssence, loadMs: loadMs.get('memory'), counted: false },
+    { name: 'memory.topics', content: memory.topicIndex, loadMs: loadMs.get('memory'), counted: false },
+    { name: 'memory.learned', content: memory.learnedKnowledge, loadMs: loadMs.get('memory'), counted: false },
+    { name: 'memory.semantic', content: semanticBlock, loadMs: loadMs.get('semantic_memory'), counted: false },
+    { name: 'documents.recent', content: recentDocumentBlock, loadMs: loadMs.get('documents'), counted: false },
+    { name: 'promises', content: promisesBlock, loadMs: loadMs.get('promises'), counted: false },
+    { name: 'reading', content: readingBlock, loadMs: loadMs.get('reading'), counted: false },
+    { name: 'web_search', content: webSearchBlock, counted: false },
+    { name: 'night_soul', content: nightSoul, loadMs: loadMs.get('night_soul'), counted: false },
+    { name: 'truth_correction', content: truthCorrection, loadMs: loadMs.get('truth_correction'), counted: false },
+    { name: 'soul.post_biography', content: soul.postBiography, loadMs: loadMs.get('soul'), counted: false },
+    { name: 'soul.skills', content: soul.skills, loadMs: loadMs.get('soul'), counted: false },
+    { name: 'family_bridge', content: familyBridge, counted: false },
+  ].filter((block) => Boolean(block.content))
+  turn?.observeContext([
+    { name: 'system.total', content: system },
+    { name: 'conversation.history', content: serializedHistory, loadMs: loadMs.get('history') },
+    { name: 'turn.input', content: message },
+    ...diagnosticBlocks,
+  ])
+  turn?.mark('context.ready', {
+    historyTurns: history.length,
+    attachment: attachment?.kind ?? null,
+  })
+
   // 附件必走直連 API（bridge 是 CLI stdin，吃不了多模態）
   const useBridge = config.bridgeSecret !== '' && !attachment
   const hasApiKey = config.anthropicApiKey !== 'not-configured'
@@ -208,6 +256,8 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     maxTokens: number,
     extraSystem = '',
   ): Promise<ApiResponse> => {
+    requestCount += 1
+    turn?.mark('llm.request_started', { requestNumber: requestCount, maxTokens })
     const res = await fetch(`${apiBase}/v1/messages`, {
       method: 'POST',
       signal,
@@ -366,6 +416,16 @@ export async function processMessage(input: BrainInput): Promise<BrainOutput> {
     input_tokens: inputTokens,
     output_tokens: outputTokens,
   }).catch(() => {})
+
+  turn?.observeModel({
+    model: config.brainModel,
+    reply,
+    tokensInput: inputTokens,
+    tokensOutput: outputTokens,
+    requestCount,
+    stopReason: data.stop_reason,
+    webSearchUsed,
+  })
 
   let visibleReply = extractWebSearchRequest(stripVoiceMarkers(reply)).cleanText
   if (webSearchUsed && webSearchSources.length) {

@@ -67,6 +67,7 @@ import {
   isVoiceCallTrigger,
   voiceCallAvailable,
 } from '../modules/voiceCall/trigger.js'
+import { createShadowTurn } from '../modules/turnKernel/index.js'
 
 /**
  * 商用 LINE OA webhook（精簡路由，職責分離——本尊 3000 行 monolith 的教訓）：
@@ -272,7 +273,10 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
   // ── 一般對話：扣點 → 動腦 → 回覆＋餘額尾註 ────────
   let charge
   try {
-    charge = await chargeGate(tenant.id, 'text', { refType: 'conversation' })
+    charge = await chargeGate(tenant.id, 'text', {
+      refType: 'conversation',
+      exempt: user.can_shape_soul,
+    })
   } catch (err) {
     if (err instanceof InsufficientPointsError) {
       await replyText(replyToken, [
@@ -283,9 +287,19 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
     throw err
   }
 
-  const output = await processMessage({ tenant, user, member, message: text })
+  const turn = createShadowTurn({
+    tenantId: tenant.id,
+    userId: user.id,
+    channel: 'line_text',
+    inputText: text,
+    metadata: { webhookEventId: event.webhookEventId ?? null },
+  })
+  const output = await processMessage({ tenant, user, member, message: text, turn })
   if (output.webSearchUsed) {
-    const searchCharge = await chargeGate(tenant.id, 'web_search', { refType: 'conversation' })
+    const searchCharge = await chargeGate(tenant.id, 'web_search', {
+      refType: 'conversation',
+      exempt: user.can_shape_soul,
+    })
     charge = {
       cost: charge.cost + searchCharge.cost,
       balance: searchCharge.balance,
@@ -299,7 +313,9 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
   const visibleReply = actions.cleanText || (actions.upgradeRequestId
     ? `收到，我已經把這件事記進升級清單 #${actions.upgradeRequestId}。`
     : '')
-  const delivered = await deliverReply(app, replyToken, tenant.id, visibleReply, charge)
+  const delivered = await deliverReply(app, replyToken, tenant.id, visibleReply, charge, {
+    pointsExempt: user.can_shape_soul,
+  })
 
   const db = forTenant(tenant.id)
   const conv = await db.query<{ id: number }>(
@@ -307,6 +323,11 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
      VALUES ($1, $2, 'text', $3, $4, $5) RETURNING id`,
     [user.id, text, delivered.conversationText, delivered.totalCost],
   )
+  turn.finish({
+    conversationId: conv.rows[0]?.id ?? null,
+    deliveredText: delivered.conversationText,
+    metadata: { webSearchUsed: output.webSearchUsed, pointsCharged: delivered.totalCost },
+  })
 
   // 安全網：她嘴巴答應但沒吐標籤 → 從對話補抽約定（fire-and-forget）
   void promiseSafetyNet(tenant.id, user.id, text, actions.cleanText, actions).catch((err) =>
@@ -346,7 +367,7 @@ async function deliverReply(
   tenantId: number,
   reply: string,
   textCharge: { cost: number; balance: number; charged: boolean; gate: string },
-  options: { audioFirst?: boolean } = {},
+  options: { audioFirst?: boolean; pointsExempt?: boolean } = {},
 ): Promise<{ totalCost: number; conversationText: string }> {
   const voiceExtract = extractVoiceTags(reply)
   const imageExtract = extractImageTags(voiceExtract.cleanText)
@@ -370,7 +391,10 @@ async function deliverReply(
           const { url, durationMs } = await clipToLineAudio(clip)
           audios.push({ type: 'audio', originalContentUrl: url, duration: durationMs })
         }
-        const voiceCharge = await chargeGate(tenantId, 'voice', { refType: 'conversation' })
+        const voiceCharge = await chargeGate(tenantId, 'voice', {
+          refType: 'conversation',
+          exempt: options.pointsExempt,
+        })
         totalCost += voiceCharge.cost
         balance = voiceCharge.balance
         messages.push(...audios)
@@ -390,7 +414,10 @@ async function deliverReply(
     if (imageGenConfigured()) {
       try {
         const { originalUrl, previewUrl } = await promptToLineImage(prompts[0])
-        const imageCharge = await chargeGate(tenantId, 'image', { refType: 'conversation' })
+        const imageCharge = await chargeGate(tenantId, 'image', {
+          refType: 'conversation',
+          exempt: options.pointsExempt,
+        })
         totalCost += imageCharge.cost
         balance = imageCharge.balance
         messages.push({ type: 'image', originalContentUrl: originalUrl, previewImageUrl: previewUrl })
@@ -455,6 +482,7 @@ async function handleAudioEvent(app: FastifyInstance, event: LineEvent): Promise
 
   // LINE 語音是 m4a/aac → 轉 mp3 給 Gemini；轉錄失敗誠實說
   let transcript: string
+  const sttStartedAt = Date.now()
   try {
     const mp3 = await m4aToMp3(content.data)
     transcript = await transcribeAudio(mp3, 'audio/mp3')
@@ -466,7 +494,10 @@ async function handleAudioEvent(app: FastifyInstance, event: LineEvent): Promise
 
   let charge
   try {
-    charge = await chargeGate(tenant.id, 'text', { refType: 'conversation' })
+    charge = await chargeGate(tenant.id, 'text', {
+      refType: 'conversation',
+      exempt: user.can_shape_soul,
+    })
   } catch (err) {
     if (err instanceof InsufficientPointsError) {
       await replyText(replyToken, [
@@ -477,15 +508,28 @@ async function handleAudioEvent(app: FastifyInstance, event: LineEvent): Promise
     throw err
   }
 
+  const turn = createShadowTurn({
+    tenantId: tenant.id,
+    userId: user.id,
+    channel: 'line_audio',
+    inputText: transcript,
+    contentKind: 'audio',
+    metadata: { webhookEventId: event.webhookEventId ?? null },
+  })
+  turn.mark('stt.completed', { stageMs: Date.now() - sttStartedAt, provider: 'gemini' })
   const output = await processMessage({
     tenant,
     user,
     member,
     message: `（他用聲音跟我說）${transcript}`,
     preferVoice: true,
+    turn,
   })
   if (output.webSearchUsed) {
-    const searchCharge = await chargeGate(tenant.id, 'web_search', { refType: 'conversation' })
+    const searchCharge = await chargeGate(tenant.id, 'web_search', {
+      refType: 'conversation',
+      exempt: user.can_shape_soul,
+    })
     charge = {
       cost: charge.cost + searchCharge.cost,
       balance: searchCharge.balance,
@@ -504,7 +548,10 @@ async function handleAudioEvent(app: FastifyInstance, event: LineEvent): Promise
     ? `收到，我已經把這件事記進升級清單 #${actions.upgradeRequestId}。`
     : '')
   const voicePreferredReply = ensurePreferredVoice(visibleReply)
-  const delivered = await deliverReply(app, replyToken, tenant.id, voicePreferredReply, charge, { audioFirst: true })
+  const delivered = await deliverReply(app, replyToken, tenant.id, voicePreferredReply, charge, {
+    audioFirst: true,
+    pointsExempt: user.can_shape_soul,
+  })
 
   const db = forTenant(tenant.id)
   const conv = await db.query<{ id: number }>(
@@ -523,6 +570,11 @@ async function handleAudioEvent(app: FastifyInstance, event: LineEvent): Promise
     canShapeSoul: user.can_shape_soul,
     allowCommitment: actions.promiseCreated,
   }).catch((err) => app.log.warn({ err }, 'audio memory learner failed'))
+  turn.finish({
+    conversationId: conv.rows[0]?.id ?? null,
+    deliveredText: delivered.conversationText,
+    metadata: { webSearchUsed: output.webSearchUsed, pointsCharged: delivered.totalCost },
+  })
 }
 
 // ── 讀圖／文件（PDF 走多模態；Office/純文字先安全抽取）─────────
@@ -584,7 +636,10 @@ async function handleMediaEvent(app: FastifyInstance, event: LineEvent): Promise
 
   let charge
   try {
-    charge = await chargeGate(tenant.id, 'vision', { refType: 'conversation' })
+    charge = await chargeGate(tenant.id, 'vision', {
+      refType: 'conversation',
+      exempt: user.can_shape_soul,
+    })
   } catch (err) {
     if (err instanceof InsufficientPointsError) {
       await replyText(replyToken, [
@@ -595,11 +650,25 @@ async function handleMediaEvent(app: FastifyInstance, event: LineEvent): Promise
     throw err
   }
 
+  const turn = createShadowTurn({
+    tenantId: tenant.id,
+    userId: user.id,
+    channel: isImage ? 'line_image' : 'line_document',
+    inputText: isImage ? '[image]' : `${fileName}\n${extracted?.text ?? ''}`,
+    contentKind: isImage ? 'image' : 'document',
+    metadata: {
+      webhookEventId: event.webhookEventId ?? null,
+      fileName,
+      mediaType: content.contentType,
+      byteLength: content.data.byteLength,
+    },
+  })
   const output = extracted
     ? await processMessage({
         tenant,
         user,
         member,
+        turn,
         semanticQuery: `分析附件 ${fileName}`,
         message: `對方傳了一份「${fileName}」。請先辨認文件的類型與結構，再用自然簡短的方式說出重點，並告訴他可以怎麼繼續問。${extracted.truncated ? '這份文件很長，系統只保留了開頭與結尾，請明確告知這項限制。' : ''}
 
@@ -612,13 +681,16 @@ ${extracted.text}
         user,
         member,
         message: isImage ? '（他傳了一張圖片給我看，我仔細看看，用我的方式回應他）' : `（他傳了一份 PDF「${fileName}」給我看，我讀完用我的方式回應他）`,
+        turn,
         attachment: {
           kind: isImage ? 'image' : 'document',
           mediaType: isImage ? (content.contentType.startsWith('image/') ? content.contentType : 'image/jpeg') : 'application/pdf',
           base64: content.data.toString('base64'),
         },
       })
-  const delivered = await deliverReply(app, replyToken, tenant.id, output.reply, charge)
+  const delivered = await deliverReply(app, replyToken, tenant.id, output.reply, charge, {
+    pointsExempt: user.can_shape_soul,
+  })
 
   if (extracted) {
     await saveUploadedDocument(tenant.id, user.id, extracted).catch((err) =>
@@ -627,9 +699,14 @@ ${extracted.text}
   }
 
   const db = forTenant(tenant.id)
-  await db.query(
+  const conv = await db.query<{ id: number }>(
     `INSERT INTO conversations (tenant_id, user_id, message_type, user_message, ai_response, points_charged)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
     [user.id, msgType, isImage ? '[圖片]' : `[檔案] ${fileName}`, delivered.conversationText, delivered.totalCost],
   )
+  turn.finish({
+    conversationId: conv.rows[0]?.id ?? null,
+    deliveredText: delivered.conversationText,
+    metadata: { webSearchUsed: output.webSearchUsed, pointsCharged: delivered.totalCost },
+  })
 }

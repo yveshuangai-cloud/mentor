@@ -51,6 +51,9 @@ const configSchema = z.object({
   // 饅頭不需要睡覺或做夢；保留旗標只為了可逆地停用舊夜間靈魂模組。
   enableNightSoul: envBoolean(false),
 
+  // Best-effort sidecar telemetry. A failed write must never change the user-visible reply.
+  turnShadowEnabled: envBoolean(true),
+
   // MiniMax 克隆聲（[VOICE_GEN] 技能執行端）
   minimaxApiKey: blankAsUndefined(z.string().default('not-configured')),
   // MiniMax 國際版不要求 GroupId；僅舊帳號／舊端點需要時才填。
@@ -95,6 +98,7 @@ const rawConfig = {
   publicBaseUrl: process.env.PUBLIC_BASE_URL,
   cronSecret: process.env.CRON_SECRET,
   enableNightSoul: process.env.ENABLE_NIGHT_SOUL,
+  turnShadowEnabled: process.env.TURN_SHADOW_ENABLED,
   minimaxApiKey: process.env.MINIMAX_API_KEY,
   minimaxGroupId: process.env.MINIMAX_GROUP_ID,
   minimaxVoiceId: process.env.MINIMAX_VOICE_ID,

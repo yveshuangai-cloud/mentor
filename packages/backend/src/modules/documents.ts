@@ -97,6 +97,15 @@ export async function saveUploadedDocument(
   visibility: 'private' | 'family_shared' = 'private',
 ): Promise<number> {
   const db = forTenant(tenantId)
+  const duplicate = await db.query<{ id: number }>(
+    `UPDATE uploaded_documents
+     SET expires_at = GREATEST(expires_at, now() + INTERVAL '30 days')
+     WHERE tenant_id = $1 AND user_id = $2 AND visibility = $3 AND content_sha256 = $4
+     RETURNING id`,
+    [userId, visibility, document.sha256],
+  )
+  if (duplicate.rows[0]) return duplicate.rows[0].id
+
   const chunks = splitDocumentChunks(document.text)
   let vectors: (number[] | null)[] = chunks.map(() => null)
   if (embeddingConfigured() && chunks.length) {
@@ -110,7 +119,10 @@ export async function saveUploadedDocument(
     const result = await q<{ id: number }>(
       `INSERT INTO uploaded_documents
          (tenant_id, user_id, file_name, file_type, extracted_text, content_sha256, truncated, visibility)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (tenant_id, user_id, visibility, content_sha256)
+       DO UPDATE SET expires_at = GREATEST(uploaded_documents.expires_at, now() + INTERVAL '30 days')
+       RETURNING id`,
       [userId, document.fileName, document.fileType, document.text, document.sha256, document.truncated, visibility],
     )
     const documentId = result.rows[0].id
@@ -118,7 +130,8 @@ export async function saveUploadedDocument(
       await q(
         `INSERT INTO document_chunks
            (tenant_id, user_id, document_id, visibility, chunk_index, citation, content, embedding)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (document_id, chunk_index) DO NOTHING`,
         [userId, documentId, visibility, i, `【${document.fileName}，段落 ${i + 1}】`, chunks[i], vectors[i] ?? null],
       )
     }
@@ -132,6 +145,35 @@ export async function loadRelevantDocumentContext(
   message: string,
 ): Promise<string> {
   const db = forTenant(tenantId)
+  if (requestsFullDocumentContext(message)) {
+    const document = await db.query<{ id: number; file_name: string; truncated: boolean }>(
+      `SELECT id, file_name, truncated
+       FROM uploaded_documents
+       WHERE tenant_id = $1
+         AND (user_id = $2 OR visibility = 'family_shared')
+         AND expires_at > now()
+       ORDER BY CASE WHEN user_id = $2 THEN 0 ELSE 1 END, created_at DESC
+       LIMIT 1`,
+      [userId],
+    )
+    const selected = document.rows[0]
+    if (!selected) return ''
+    const chunks = await db.query<{ citation: string; content: string }>(
+      `SELECT citation, content
+       FROM document_chunks
+       WHERE tenant_id = $1 AND document_id = $2
+       ORDER BY chunk_index ASC`,
+      [selected.id],
+    )
+    if (!chunks.rows.length) return ''
+    const completeness = selected.truncated
+      ? '\n注意：來源在擷取階段超過系統上限，以下是已保存內容的全部分段，不代表原始檔案百分之百完整。'
+      : '\n以下已依原始順序合併這份文件的全部分段。'
+    return `# 完整文件內容：${selected.file_name}${completeness}\n\n${chunks.rows
+      .map((chunk) => `${chunk.citation}\n${chunk.content}`)
+      .join('\n\n')}`
+  }
+
   const result = await db.query<{
     citation: string
     content: string
@@ -167,6 +209,11 @@ ${hits.map((hit) => `${hit.citation}\n${hit.content}`).join('\n\n')}`
 
 /** Backwards-compatible name for callers while the KB implementation is now semantic. */
 export const loadRecentDocumentContext = loadRelevantDocumentContext
+
+export function requestsFullDocumentContext(message: string): boolean {
+  const normalized = message.replace(/\s+/g, '')
+  return /(完整閱讀|閱讀完整|完整讀完|全文閱讀|閱讀全文|整份閱讀|閱讀整份|通讀|從頭到尾|逐頁閱讀|完整摘要|全文摘要|整份摘要|全部內容)/.test(normalized)
+}
 
 export function splitDocumentChunks(text: string): string[] {
   const chunks: string[] = []

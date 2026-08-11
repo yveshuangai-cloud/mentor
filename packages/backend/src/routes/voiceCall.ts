@@ -20,6 +20,7 @@ import {
 import { issueVoiceToken, verifyLiffIdToken, verifyVoiceToken } from '../modules/voiceCall/auth.js'
 import { DeepgramStream } from '../modules/voiceCall/deepgram.js'
 import { VoiceGeneration } from '../modules/voiceCall/generation.js'
+import { createShadowTurn } from '../modules/turnKernel/index.js'
 
 type VoiceState = 'listening' | 'hearing' | 'thinking' | 'speaking' | 'interrupting'
 
@@ -231,10 +232,23 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
         activeControllers.add(controller)
         turnStartedAt.set(generation, sttFinalAt)
         status('thinking')
+        const turn = createShadowTurn({
+          tenantId: tenant.id,
+          userId: user.id,
+          channel: 'websocket_voice',
+          inputText: transcript,
+          contentKind: 'audio',
+          metadata: { sessionId: tokenPayload.sid, generation },
+        })
+        turn.mark('stt.completed', {
+          provider: 'deepgram',
+          queueMs: Math.max(0, Date.now() - sttFinalAt),
+        })
         try {
           const charge = await chargeGate(tenant.id, 'voice', {
             refType: 'voice_call',
             refId: tokenPayload.sid,
+            exempt: user.can_shape_soul,
           })
           let firstSentence = ''
           let firstSegmentTask: Promise<void> | null = null
@@ -268,6 +282,15 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
                   pitch: profile.pitch,
                   traceId,
                 }, 'voice segment started')
+                turn.mark('tts.first_audio', {
+                  provider: 'minimax',
+                  segmentIndex,
+                  traceId,
+                  emotion: profile.emotion,
+                  style: profile.style,
+                  speed: profile.speed,
+                  latencyMs: now - sttFinalAt,
+                })
               },
               onAudioChunk: (chunk) => {
                 if (!generations.isCurrent(generation) || closed || controller.signal.aborted) return
@@ -307,6 +330,7 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
               logLatency(generation, 'llm_first_token', Date.now() - sttFinalAt)
             },
             onVoiceSentence: startFirstSentence,
+            turn,
           })
           const spoken = clampVoiceCallReply(output.reply, 90)
           if (!spoken || !generations.isCurrent(generation) || closed) return
@@ -334,6 +358,15 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
              VALUES ($1, $2, 'voice_call', $3, $4, $5, $6) RETURNING id`,
             [user.id, transcript, spoken, charge.cost, JSON.stringify({ sessionId: tokenPayload.sid })],
           )
+          turn.finish({
+            conversationId: conv.rows[0]?.id ?? null,
+            deliveredText: spoken,
+            metadata: {
+              pointsCharged: charge.cost,
+              generation,
+              audioDurationMs: totalAudioDurationMs,
+            },
+          })
           void extractAndLearn({
             tenantId: tenant.id,
             conversationId: conv.rows[0]?.id ?? null,
@@ -351,6 +384,7 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
           )
         } catch (error) {
           if (controller.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) return
+          turn.fail(error, 'websocket_voice_turn')
           request.log.error({ err: error, sessionId: tokenPayload.sid }, 'voice turn failed')
           const message = error instanceof InsufficientPointsError
             ? '目前點數不足，暫時無法繼續通話。'

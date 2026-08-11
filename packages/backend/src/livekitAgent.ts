@@ -23,6 +23,7 @@ import {
   planVoiceCallSegments,
   streamSynthesizePcm,
 } from './modules/voice.js'
+import { createShadowTurn, type TurnKernel } from './modules/turnKernel/index.js'
 
 interface MantouParticipantMetadata {
   lineUserId: string
@@ -55,6 +56,13 @@ const agent = defineAgent({
     }
     const { tenant, member } = membership
     const db = forTenant(tenant.id)
+    let activeTurn: TurnKernel | null = null
+    let pendingTurnFinish: {
+      turn: TurnKernel
+      conversationId: number | null
+      deliveredText: string
+      metadata: Record<string, unknown>
+    } | null = null
 
     await db.query(
       `INSERT INTO voice_call_sessions (tenant_id, session_id, user_id, status, started_at)
@@ -69,6 +77,17 @@ const agent = defineAgent({
         const transcript = latestUserText(chatCtx)
         if (!transcript) return new ReadableStream<string>({ start: (controller) => controller.close() })
 
+        const turn = createShadowTurn({
+          tenantId: tenant.id,
+          userId: user.id,
+          channel: 'livekit_voice',
+          inputText: transcript,
+          contentKind: 'audio',
+          metadata: { sessionId: metadata.sessionId },
+        })
+        activeTurn = turn
+        turn.mark('stt.completed', { provider: 'deepgram_livekit' })
+
         return new ReadableStream<string>({
           start(controller) {
             const turnStartedAt = Date.now()
@@ -80,6 +99,7 @@ const agent = defineAgent({
                 const charge = await chargeGate(tenant.id, 'voice', {
                   refType: 'voice_call',
                   refId: metadata.sessionId,
+                  exempt: user.can_shape_soul,
                 })
                 chargedPoints = charge.cost
                 const output = await processMessage({
@@ -100,6 +120,7 @@ const agent = defineAgent({
                     firstSentence = clampVoiceCallReply(sentence, 90)
                     if (firstSentence) controller.enqueue(firstSentence)
                   },
+                  turn,
                 })
                 const spoken = clampVoiceCallReply(output.reply, 90)
                 const remaining = firstSentence && spoken.startsWith(firstSentence)
@@ -118,6 +139,12 @@ const agent = defineAgent({
                     transport: 'livekit',
                   })],
                 )
+                pendingTurnFinish = {
+                  turn,
+                  conversationId: conv.rows[0]?.id ?? null,
+                  deliveredText: spoken,
+                  metadata: { pointsCharged: chargedPoints, sessionId: metadata.sessionId },
+                }
                 void extractAndLearn({
                   tenantId: tenant.id,
                   conversationId: conv.rows[0]?.id ?? null,
@@ -140,6 +167,7 @@ const agent = defineAgent({
                   controller.close()
                   return
                 }
+                turn.fail(error, 'livekit_voice_turn')
                 controller.error(error)
               }
             })()
@@ -156,18 +184,30 @@ const agent = defineAgent({
             const frames = new ReadableStream<AudioFrame>({
               start(controller) {
                 void streamSynthesizePcm(clip, {
-                  onFirstAudioChunk: ({ traceId, profile }) => console.info(JSON.stringify({
-                    event: 'livekit_voice_latency',
-                    stage: 'tts_first_audio',
-                    sessionId: metadata.sessionId,
-                    segmentIndex: index,
-                    latencyMs: Date.now() - startedAt,
-                    model: 'speech-2.8-hd',
-                    emotion: profile.emotion,
-                    style: profile.style,
-                    speed: profile.speed,
-                    traceId,
-                  })),
+                  onFirstAudioChunk: ({ traceId, profile }) => {
+                    const stageMs = Date.now() - startedAt
+                    console.info(JSON.stringify({
+                      event: 'livekit_voice_latency',
+                      stage: 'tts_first_audio',
+                      sessionId: metadata.sessionId,
+                      segmentIndex: index,
+                      latencyMs: stageMs,
+                      model: 'speech-2.8-hd',
+                      emotion: profile.emotion,
+                      style: profile.style,
+                      speed: profile.speed,
+                      traceId,
+                    }))
+                    activeTurn?.mark('tts.first_audio', {
+                      provider: 'minimax',
+                      segmentIndex: index,
+                      stageMs,
+                      traceId,
+                      emotion: profile.emotion,
+                      style: profile.style,
+                      speed: profile.speed,
+                    })
+                  },
                   onPcmChunk: (chunk) => {
                     for (const frame of pcm.write(chunk)) controller.enqueue(frame)
                   },
@@ -180,11 +220,18 @@ const agent = defineAgent({
             for await (const frame of frames) yield frame
           }
         }
+        if (pendingTurnFinish) {
+          pendingTurnFinish.turn.finish({
+            conversationId: pendingTurnFinish.conversationId,
+            deliveredText: pendingTurnFinish.deliveredText,
+            metadata: pendingTurnFinish.metadata,
+          })
+          pendingTurnFinish = null
+        }
       },
     })
 
     const session = new voice.AgentSession({
-      vad: null,
       stt: new DeepgramSTT({
         apiKey: config.deepgramApiKey,
         // Deepgram rejects several newer boolean query parameters for this
@@ -204,7 +251,9 @@ const agent = defineAgent({
         profanityFilter: undefined,
         mipOptOut: undefined,
         endpointing: 250,
-        utteranceEndMs: 700,
+        // Deepgram requires utterance_end_ms >= 1000. 700 made the streaming
+        // WebSocket fail with HTTP 400 before any transcript could be emitted.
+        utteranceEndMs: 1_000,
       }),
       turnHandling: {
         turnDetection: 'stt',

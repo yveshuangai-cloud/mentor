@@ -26,7 +26,19 @@ async function main(): Promise<void> {
 
   const env = {
     ...process.env,
+    NODE_ENV: 'test',
     DATABASE_URL: 'postgres://mantou:acceptance@localhost:55432/mantou_acceptance',
+    DATABASE_PUBLIC_URL: '',
+    // Acceptance uses fake users and local LLM overrides. Never inherit production connectors.
+    LINE_CHANNEL_TOKEN: 'not-configured',
+    LINE_CHANNEL_SECRET: 'not-configured',
+    BRIDGE_SECRET: '',
+    ANTHROPIC_API_KEY: 'not-configured',
+    GEMINI_API_KEY: 'not-configured',
+    MINIMAX_API_KEY: 'not-configured',
+    DEEPGRAM_API_KEY: 'not-configured',
+    LIVEKIT_ENABLED: 'false',
+    TURN_SHADOW_ENABLED: 'true',
   }
   const backendDir = join(dirname(fileURLToPath(import.meta.url)), '..')
   const tsxCli = join(backendDir, '../../node_modules/tsx/dist/cli.mjs') // workspaces 提升到根

@@ -112,8 +112,13 @@ export interface ChargeResult {
 export async function chargeGate(
   tenantId: number,
   gate: string,
-  opts: { refType?: string; refId?: string } = {},
+  opts: { refType?: string; refId?: string; exempt?: boolean } = {},
 ): Promise<ChargeResult> {
+  // Soul-authorized operators are the named closed-test owners. Their turns
+  // must never be blocked by commercial point rules or create debit entries.
+  if (opts.exempt) {
+    return { gate, cost: 0, balance: await getBalance(tenantId), charged: false }
+  }
   const rules = await getPointRules()
   const rule = rules.get(gate)
   if (!rule || !rule.enabled || rule.cost === 0) {

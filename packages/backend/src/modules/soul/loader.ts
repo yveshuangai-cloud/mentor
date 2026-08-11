@@ -39,6 +39,7 @@ const SKILL_FILES = [
   'skills/voice-clips.md',
   'skills/web-search.md',
   'skills/document-reading.md',
+  'skills/clarifying-requests.md',
   'skills/mantou-emotional-voice/SKILL.md',
 ]
 

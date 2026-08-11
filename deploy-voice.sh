@@ -41,7 +41,7 @@ gcloud run deploy "$SERVICE" \
   --cpu=1 \
   --service-account="mantou-runtime@${PROJECT}.iam.gserviceaccount.com" \
   --add-cloudsql-instances="$CLOUD_SQL_CONNECTION" \
-  --set-env-vars="NODE_ENV=production,LINE_LOGIN_CHANNEL_ID=${LINE_LOGIN_CHANNEL_ID},LIFF_ID=${LIFF_ID}" \
+  --set-env-vars="NODE_ENV=production,LINE_LOGIN_CHANNEL_ID=${LINE_LOGIN_CHANNEL_ID},LIFF_ID=${LIFF_ID},TURN_SHADOW_ENABLED=true" \
   --set-secrets="DATABASE_URL=mantou-database-url:latest,JWT_SECRET=mantou-jwt-secret:latest,ANTHROPIC_API_KEY=mantou-anthropic-api-key:latest,MINIMAX_API_KEY=mantou-minimax-api-key:latest,MINIMAX_VOICE_ID=mantou-minimax-voice-id:latest,DEEPGRAM_API_KEY=mantou-deepgram-api-key:latest"
 
 RUN_URL="$(gcloud run services describe "$SERVICE" \
