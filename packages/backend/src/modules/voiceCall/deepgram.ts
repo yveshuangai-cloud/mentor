@@ -58,9 +58,18 @@ export class DeepgramStream {
       try {
         const message = JSON.parse(raw.toString()) as {
           type?: string
+          code?: string
+          description?: string
+          message?: string
           is_final?: boolean
           speech_final?: boolean
           channel?: { alternatives?: Array<{ transcript?: string }> }
+        }
+        if (message.type === 'Error') {
+          this.options.onError(new Error(
+            `Deepgram ${message.code ?? 'stream_error'}: ${message.description ?? message.message ?? 'unknown error'}`,
+          ))
+          return
         }
         if (message.type !== 'Results') return
         const text = message.channel?.alternatives?.[0]?.transcript?.trim() ?? ''
@@ -75,6 +84,9 @@ export class DeepgramStream {
       }
     })
     socket.on('error', (error) => this.options.onError(error))
+    socket.on('close', (code, reason) => {
+      if (code !== 1000) this.options.onError(new Error(`Deepgram closed ${code}: ${reason.toString()}`))
+    })
   }
 
   sendAudio(chunk: Buffer): void {

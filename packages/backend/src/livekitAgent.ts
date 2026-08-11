@@ -239,7 +239,10 @@ const agent = defineAgent({
         // Undefined overrides keep the plugin URL on the proven minimal set.
         model: 'nova-2',
         language: 'zh-TW',
-        sampleRate: 16_000,
+        // LiveKit/WebRTC delivers decoded microphone audio at 48 kHz. Keeping
+        // Deepgram at the native rate avoids rtc-node's 48→16 kHz resampler,
+        // which produced non-speech PCM and empty zh-TW transcripts in E2E.
+        sampleRate: 48_000,
         interimResults: true,
         smartFormat: true,
         punctuate: undefined,
@@ -270,6 +273,31 @@ const agent = defineAgent({
         event: 'livekit_agent_metrics',
         sessionId: metadata.sessionId,
         metrics: event.metrics,
+      }))
+    })
+    session.on(AgentSessionEventTypes.UserStateChanged, (event) => {
+      console.info(JSON.stringify({
+        event: 'livekit_user_state',
+        sessionId: metadata.sessionId,
+        oldState: event.oldState,
+        newState: event.newState,
+      }))
+    })
+    session.on(AgentSessionEventTypes.UserInputTranscribed, (event) => {
+      console.info(JSON.stringify({
+        event: 'livekit_transcript',
+        sessionId: metadata.sessionId,
+        isFinal: event.isFinal,
+        transcriptChars: event.transcript.length,
+        language: event.language,
+      }))
+    })
+    session.on(AgentSessionEventTypes.AgentStateChanged, (event) => {
+      console.info(JSON.stringify({
+        event: 'livekit_agent_state',
+        sessionId: metadata.sessionId,
+        oldState: event.oldState,
+        newState: event.newState,
       }))
     })
     session.on(AgentSessionEventTypes.Error, (event) => {
