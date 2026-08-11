@@ -32,36 +32,11 @@ const token = new AccessToken(config.livekitApiKey, config.livekitApiSecret, {
 token.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true })
 
 const room = new Room()
-const observer = new Room()
 let receivedFrames = 0
 let receivedSamples = 0
 let agentTrackSeen = false
 let resolveReply!: () => void
 const reply = new Promise<void>((resolve) => { resolveReply = resolve })
-let resolveObservedAudio!: (result: { peak: number; rms: number; samples: number }) => void
-const observedAudio = new Promise<{ peak: number; rms: number; samples: number }>((resolve) => {
-  resolveObservedAudio = resolve
-})
-
-observer.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
-  if (track.kind !== 0 || participant.identity !== identity) return
-  void (async () => {
-    let samples = 0
-    let peak = 0
-    let energy = 0
-    for await (const frame of new AudioStream(track, { sampleRate: 48_000, numChannels: 1 })) {
-      for (const sample of frame.data) {
-        peak = Math.max(peak, Math.abs(sample))
-        energy += sample * sample
-      }
-      samples += frame.samplesPerChannel
-      if (samples >= 48_000 * 2) {
-        resolveObservedAudio({ peak, rms: Math.round(Math.sqrt(energy / samples)), samples })
-        break
-      }
-    }
-  })()
-})
 
 room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
   if (track.kind !== 0) return
@@ -166,12 +141,6 @@ console.info(JSON.stringify({ event: 'e2e_deepgram_rest_48k', ok: rest48Response
 if (!rest48Transcript) throw new Error('e2e_deepgram_rest_48k_empty')
 
 try {
-  const observerToken = new AccessToken(config.livekitApiKey, config.livekitApiSecret, {
-    identity: `observer-${randomUUID()}`,
-    ttl: '10m',
-  })
-  observerToken.addGrant({ roomJoin: true, room: roomName, canPublish: false, canSubscribe: true })
-  await observer.connect(config.livekitUrl, await observerToken.toJwt(), { autoSubscribe: true })
   await room.connect(config.livekitUrl, await token.toJwt(), { autoSubscribe: true })
   const source = new AudioSource(48_000, 1, 1_000)
   const track = LocalAudioTrack.createAudioTrack('e2e-microphone', source)
@@ -184,6 +153,9 @@ try {
     config.livekitApiSecret,
   )
   await dispatch.createDispatch(roomName, config.livekitAgentName, { metadata })
+  // Keep the synthetic caller as the room's only remote participant. Agent
+  // dispatch is asynchronous, so even an observer joining immediately after
+  // createDispatch can win waitForParticipant() and be mistaken for the user.
   // Cloud Run needs a short window to accept the dispatched job and subscribe
   // before the finite synthetic utterance begins; live microphones naturally
   // keep producing frames and do not have this race.
@@ -207,13 +179,6 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
 
-  const observed = await Promise.race([
-    observedAudio,
-    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('e2e_observer_audio_timeout')), 10_000)),
-  ])
-  console.info(JSON.stringify({ event: 'e2e_observed_microphone', ...observed }))
-  if (observed.peak < 100 || observed.rms < 20) throw new Error('e2e_observed_microphone_silent')
-
   await Promise.race([
     reply,
     new Promise<never>((_, reject) => setTimeout(() => reject(new Error('e2e_agent_reply_timeout')), timeoutMs)),
@@ -227,6 +192,5 @@ try {
   await track.close()
 } finally {
   await room.disconnect()
-  await observer.disconnect()
   await dispose()
 }

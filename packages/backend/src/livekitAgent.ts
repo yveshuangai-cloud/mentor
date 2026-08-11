@@ -3,11 +3,11 @@ import { ReadableStream } from 'node:stream/web'
 import {
   AgentSessionEventTypes,
   AudioByteStream,
+  ChatContext,
   ServerOptions,
   cli,
   defineAgent,
   voice,
-  type ChatContext,
 } from '@livekit/agents'
 import { STT as DeepgramSTT } from '@livekit/agents-plugin-deepgram'
 import type { AudioFrame } from '@livekit/rtc-node'
@@ -292,7 +292,27 @@ const agent = defineAgent({
           sessionId: metadata.sessionId,
           transcriptChars: userInput.length,
         }))
-        session.generateReply({ userInput })
+        void (async () => {
+          // AgentSession.generateReply() requires a framework LLM instance even
+          // when this agent supplies a custom llmNode. Mantou intentionally
+          // routes replies through processMessage(), so invoke that node and
+          // hand its text stream to say(); this preserves the normal TTS/output
+          // pipeline without adding a second LLM provider.
+          const chatCtx = ChatContext.empty()
+          chatCtx.addMessage({ role: 'user', content: userInput })
+          const reply = await mantou.llmNode(chatCtx, mantou.toolCtx, {})
+          if (!reply) return
+          session.say(reply as ReadableStream<string>, {
+            allowInterruptions: false,
+            addToChatCtx: false,
+          })
+        })().catch((error) => {
+          console.error(JSON.stringify({
+            event: 'livekit_manual_turn_error',
+            sessionId: metadata.sessionId,
+            error: error instanceof Error ? error.message : String(error),
+          }))
+        })
       }, 600)
     }
 
