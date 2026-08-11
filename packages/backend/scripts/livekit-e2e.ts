@@ -32,11 +32,36 @@ const token = new AccessToken(config.livekitApiKey, config.livekitApiSecret, {
 token.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true })
 
 const room = new Room()
+const observer = new Room()
 let receivedFrames = 0
 let receivedSamples = 0
 let agentTrackSeen = false
 let resolveReply!: () => void
 const reply = new Promise<void>((resolve) => { resolveReply = resolve })
+let resolveObservedAudio!: (result: { peak: number; rms: number; samples: number }) => void
+const observedAudio = new Promise<{ peak: number; rms: number; samples: number }>((resolve) => {
+  resolveObservedAudio = resolve
+})
+
+observer.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
+  if (track.kind !== 0 || participant.identity !== identity) return
+  void (async () => {
+    let samples = 0
+    let peak = 0
+    let energy = 0
+    for await (const frame of new AudioStream(track, { sampleRate: 48_000, numChannels: 1 })) {
+      for (const sample of frame.data) {
+        peak = Math.max(peak, Math.abs(sample))
+        energy += sample * sample
+      }
+      samples += frame.samplesPerChannel
+      if (samples >= 48_000 * 2) {
+        resolveObservedAudio({ peak, rms: Math.round(Math.sqrt(energy / samples)), samples })
+        break
+      }
+    }
+  })()
+})
 
 room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
   if (track.kind !== 0) return
@@ -141,6 +166,12 @@ console.info(JSON.stringify({ event: 'e2e_deepgram_rest_48k', ok: rest48Response
 if (!rest48Transcript) throw new Error('e2e_deepgram_rest_48k_empty')
 
 try {
+  const observerToken = new AccessToken(config.livekitApiKey, config.livekitApiSecret, {
+    identity: `observer-${randomUUID()}`,
+    ttl: '10m',
+  })
+  observerToken.addGrant({ roomJoin: true, room: roomName, canPublish: false, canSubscribe: true })
+  await observer.connect(config.livekitUrl, await observerToken.toJwt(), { autoSubscribe: true })
   await room.connect(config.livekitUrl, await token.toJwt(), { autoSubscribe: true })
   const source = new AudioSource(48_000, 1, 1_000)
   const track = LocalAudioTrack.createAudioTrack('e2e-microphone', source)
@@ -158,19 +189,30 @@ try {
   // keep producing frames and do not have this race.
   await new Promise((resolve) => setTimeout(resolve, 3_000))
 
-  const frameBytes = 4_800 * 2 // 100 ms, signed 16-bit mono at 48 kHz
+  const frameBytes = 480 * 2 // 10 ms WebRTC frame, signed 16-bit mono at 48 kHz
   for (let offset = 0; offset < pcm48.length; offset += frameBytes) {
     const chunk = pcm48.subarray(offset, Math.min(offset + frameBytes, pcm48.length))
     const samples = new Int16Array(chunk.buffer, chunk.byteOffset, Math.floor(chunk.byteLength / 2))
-    await source.captureFrame(new AudioFrame(samples, 48_000, 1, samples.length))
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    const frame = AudioFrame.create(48_000, 1, samples.length)
+    frame.data.set(samples)
+    await source.captureFrame(frame)
+    await new Promise((resolve) => setTimeout(resolve, 10))
   }
   const silence = new Int16Array(48_000 * 2)
-  for (let offset = 0; offset < silence.length; offset += 4_800) {
-    const samples = silence.subarray(offset, offset + 4_800)
-    await source.captureFrame(new AudioFrame(samples, 48_000, 1, samples.length))
-    await new Promise((resolve) => setTimeout(resolve, 100))
+  for (let offset = 0; offset < silence.length; offset += 480) {
+    const samples = silence.subarray(offset, offset + 480)
+    const frame = AudioFrame.create(48_000, 1, samples.length)
+    frame.data.set(samples)
+    await source.captureFrame(frame)
+    await new Promise((resolve) => setTimeout(resolve, 10))
   }
+
+  const observed = await Promise.race([
+    observedAudio,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('e2e_observer_audio_timeout')), 10_000)),
+  ])
+  console.info(JSON.stringify({ event: 'e2e_observed_microphone', ...observed }))
+  if (observed.peak < 100 || observed.rms < 20) throw new Error('e2e_observed_microphone_silent')
 
   await Promise.race([
     reply,
@@ -185,5 +227,6 @@ try {
   await track.close()
 } finally {
   await room.disconnect()
+  await observer.disconnect()
   await dispose()
 }

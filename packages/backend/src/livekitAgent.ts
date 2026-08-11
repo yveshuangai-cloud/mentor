@@ -265,7 +265,10 @@ const agent = defineAgent({
         utteranceEndMs: 1_000,
       }),
       turnHandling: {
-        turnDetection: 'stt',
+        // Commit final Deepgram segments explicitly below. The JS 1.6.2
+        // built-in STT endpointing emitted final transcripts and user-state
+        // transitions but never scheduled the LLM turn in production.
+        turnDetection: 'manual',
         endpointing: { mode: 'fixed', minDelay: 200, maxDelay: 800 },
         interruption: { enabled: false, mode: 'vad', minDuration: 250, minWords: 1 },
         preemptiveGeneration: { enabled: true, preemptiveTts: false },
@@ -273,6 +276,25 @@ const agent = defineAgent({
       userAwayTimeout: null,
       aecWarmupDuration: 1_000,
     })
+
+    let pendingTranscript = ''
+    let transcriptCommitTimer: NodeJS.Timeout | null = null
+
+    const scheduleTranscriptCommit = () => {
+      if (transcriptCommitTimer) clearTimeout(transcriptCommitTimer)
+      transcriptCommitTimer = setTimeout(() => {
+        const userInput = pendingTranscript.trim()
+        pendingTranscript = ''
+        transcriptCommitTimer = null
+        if (!userInput) return
+        console.info(JSON.stringify({
+          event: 'livekit_manual_turn_commit',
+          sessionId: metadata.sessionId,
+          transcriptChars: userInput.length,
+        }))
+        session.generateReply({ userInput })
+      }, 600)
+    }
 
     session.on(AgentSessionEventTypes.MetricsCollected, (event) => {
       console.info(JSON.stringify({
@@ -297,6 +319,12 @@ const agent = defineAgent({
         transcriptChars: event.transcript.length,
         language: event.language,
       }))
+      if (event.isFinal && event.transcript.trim()) {
+        pendingTranscript = `${pendingTranscript} ${event.transcript.trim()}`.trim()
+      }
+      // Any new interim/final activity extends the utterance debounce so a
+      // short pause inside one sentence does not create two assistant replies.
+      scheduleTranscriptCommit()
     })
     session.on(AgentSessionEventTypes.AgentStateChanged, (event) => {
       console.info(JSON.stringify({
@@ -311,6 +339,7 @@ const agent = defineAgent({
     })
 
     ctx.addShutdownCallback(async () => {
+      if (transcriptCommitTimer) clearTimeout(transcriptCommitTimer)
       await db.query(
         `UPDATE voice_call_sessions
          SET status = 'ended', ended_at = now(), close_reason = 'livekit_disconnected', updated_at = now()
