@@ -302,6 +302,7 @@ const agent = defineAgent({
 
     let pendingTranscript = ''
     let transcriptCommitTimer: NodeJS.Timeout | null = null
+    let acceptingTurns = false
 
     const scheduleTranscriptCommit = () => {
       if (transcriptCommitTimer) clearTimeout(transcriptCommitTimer)
@@ -314,6 +315,7 @@ const agent = defineAgent({
         pendingTranscript = ''
         transcriptCommitTimer = null
         if (!userInput) return
+        if (!acceptingTurns || !session._started || session._closing) return
         console.info(JSON.stringify({
           event: 'livekit_manual_turn_commit',
           sessionId: metadata.sessionId,
@@ -328,7 +330,7 @@ const agent = defineAgent({
           const chatCtx = ChatContext.empty()
           chatCtx.addMessage({ role: 'user', content: userInput })
           const reply = await mantou.llmNode(chatCtx, mantou.toolCtx, {})
-          if (!reply) return
+          if (!reply || !acceptingTurns || session._closing) return
           const [transcriptText, spokenText] = (reply as ReadableStream<string>).tee()
           const audio = await mantou.ttsNode(spokenText, {})
           if (!audio) throw new Error('livekit_custom_tts_stream_missing')
@@ -390,7 +392,9 @@ const agent = defineAgent({
     })
 
     ctx.addShutdownCallback(async () => {
+      acceptingTurns = false
       if (transcriptCommitTimer) clearTimeout(transcriptCommitTimer)
+      pendingTranscript = ''
       await db.query(
         `UPDATE voice_call_sessions
          SET status = 'ended', ended_at = now(), close_reason = 'livekit_disconnected', updated_at = now()
@@ -409,6 +413,7 @@ const agent = defineAgent({
       // room all the way into Deepgram.
       inputOptions: { audioSampleRate: 48_000, audioNumChannels: 1 },
     })
+    acceptingTurns = true
   },
 })
 
