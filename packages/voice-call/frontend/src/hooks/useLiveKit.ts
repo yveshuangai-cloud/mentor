@@ -16,6 +16,8 @@ export function useLiveKit() {
   const roomRef = useRef<Room | null>(null);
   const remoteParticipantRef = useRef<RemoteParticipant | null>(null);
   const audioElementsRef = useRef<HTMLMediaElement[]>([]);
+  const mediaActivatedRef = useRef(false);
+  const speakerOnRef = useRef(true);
   const analysisContextRef = useRef<AudioContext | null>(null);
   const analysisSinkRef = useRef<GainNode | null>(null);
   const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -30,6 +32,8 @@ export function useLiveKit() {
   const [micError, setMicError] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
+  const [mediaActivationRequired, setMediaActivationRequired] = useState(true);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
 
   const cleanupAudio = useCallback(() => {
     for (const element of audioElementsRef.current) element.remove();
@@ -54,6 +58,7 @@ export function useLiveKit() {
     micVolumeBufferRef.current = null;
     remoteVolumeBufferRef.current = null;
     remoteParticipantRef.current = null;
+    mediaActivatedRef.current = false;
   }, []);
 
   const attachVolumeAnalyser = useCallback((side: 'mic' | 'remote', mediaTrack: MediaStreamTrack) => {
@@ -119,11 +124,27 @@ export function useLiveKit() {
       remoteParticipantRef.current = participant;
       const element = track.attach();
       element.autoplay = true;
-      element.muted = !isSpeakerOn;
+      element.muted = !speakerOnRef.current;
+      element.setAttribute('playsinline', 'true');
       element.style.display = 'none';
       document.body.appendChild(element);
       audioElementsRef.current.push(element);
       attachVolumeAnalyser('remote', track.mediaStreamTrack);
+      if (mediaActivatedRef.current) {
+        void element.play().catch((error: unknown) => {
+          setMediaActivationRequired(true);
+          setPlaybackError(error instanceof Error ? error.message : 'LINE 阻擋了音訊播放');
+        });
+      }
+    });
+    room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+      if (!room.canPlaybackAudio) {
+        setMediaActivationRequired(true);
+        setPlaybackError('LINE 需要你點一下，才能播放饅頭的聲音');
+      } else if (mediaActivatedRef.current) {
+        setMediaActivationRequired(false);
+        setPlaybackError(null);
+      }
     });
     room.on(RoomEvent.ParticipantAttributesChanged, (changed, participant) => {
       if (participant === room.localParticipant) return;
@@ -139,11 +160,12 @@ export function useLiveKit() {
 
     try {
       await room.connect(session.url, session.token, { autoSubscribe: true });
-      await room.startAudio();
-      await room.localParticipant.setMicrophoneEnabled(true);
-      const microphoneTrack = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
-      if (microphoneTrack) attachVolumeAnalyser('mic', microphoneTrack.mediaStreamTrack);
-      setMicActive(true);
+      // LINE's WKWebView/Android WebView requires playback and microphone
+      // capture to begin directly from a tap. Keep the room connected, but do
+      // not activate either medium until activateMedia() is called by the CTA.
+      setMediaActivationRequired(true);
+      setPlaybackError(null);
+      setMicActive(false);
       setCallStatus('active');
       setFelicityState('listening');
     } catch (error) {
@@ -152,7 +174,35 @@ export function useLiveKit() {
       await room.disconnect();
       throw error;
     }
-  }, [attachVolumeAnalyser, cleanupAnalysis, cleanupAudio, isSpeakerOn]);
+  }, [attachVolumeAnalyser, cleanupAnalysis, cleanupAudio]);
+
+  const activateMedia = useCallback(async () => {
+    const room = roomRef.current;
+    if (!room) return;
+    setMicError(null);
+    setPlaybackError(null);
+    try {
+      // Start both operations before awaiting either one, preserving the same
+      // user gesture for strict LINE/iOS autoplay and microphone policies.
+      const audioStarted = room.startAudio();
+      const microphoneStarted = room.localParticipant.setMicrophoneEnabled(true);
+      await Promise.all([audioStarted, microphoneStarted]);
+      await Promise.all(audioElementsRef.current.map(async (element) => {
+        element.muted = !speakerOnRef.current;
+        await element.play();
+      }));
+      const microphoneTrack = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
+      if (microphoneTrack) attachVolumeAnalyser('mic', microphoneTrack.mediaStreamTrack);
+      mediaActivatedRef.current = true;
+      setMicActive(true);
+      setMediaActivationRequired(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '無法開啟聲音或麥克風';
+      setMicError(message);
+      setPlaybackError(message);
+      setMediaActivationRequired(true);
+    }
+  }, [attachVolumeAnalyser]);
 
   const hangUp = useCallback(() => {
     void roomRef.current?.disconnect();
@@ -171,6 +221,7 @@ export function useLiveKit() {
 
   const toggleSpeaker = useCallback(() => {
     const next = !isSpeakerOn;
+    speakerOnRef.current = next;
     setIsSpeakerOn(next);
     for (const element of audioElementsRef.current) element.muted = !next;
   }, [isSpeakerOn]);
@@ -186,9 +237,12 @@ export function useLiveKit() {
     felicityState,
     micActive,
     micError,
+    playbackError,
+    mediaActivationRequired,
     isMuted,
     isSpeakerOn,
     connect,
+    activateMedia,
     hangUp,
     toggleMute,
     toggleSpeaker,

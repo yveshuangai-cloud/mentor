@@ -8,10 +8,13 @@ interface Props {
   felicityState: FelicityState;
   micActive: boolean;
   micError: string | null;
+  playbackError: string | null;
+  mediaActivationRequired: boolean;
   isMuted: boolean;
   isSpeakerOn: boolean;
   onHangUp: () => void;
   onRetry: () => void;
+  onActivateMedia: () => void;
   onToggleMute: () => void;
   onToggleSpeaker: () => void;
   getMicVolume: () => number;
@@ -72,6 +75,19 @@ export default function CallScreen(props: Props) {
         )}
 
         {props.micError && <p className="mt-4 max-w-xs text-center text-sm text-red-300">{props.micError}</p>}
+        {active && props.mediaActivationRequired && (
+          <div className="mt-5 max-w-xs rounded-2xl border border-amber-300/30 bg-amber-300/10 px-5 py-4 text-center shadow-xl">
+            <p className="text-sm leading-6 text-white">點一下才能讓 LINE 播放饅頭的聲音，並開啟你的麥克風。</p>
+            {props.playbackError && <p className="mt-1 text-xs text-amber-100/70">{props.playbackError}</p>}
+            <button
+              type="button"
+              onClick={props.onActivateMedia}
+              className="mt-3 w-full rounded-full bg-[#06C755] px-5 py-3 font-medium text-white active:scale-95 transition-transform"
+            >
+              開啟聲音並開始通話
+            </button>
+          </div>
+        )}
         {active && <p className="mt-3 text-xs text-white/35">{props.isMuted ? '麥克風已關閉' : props.micActive ? '麥克風已開啟' : '正在取得麥克風權限'}</p>}
       </section>
 

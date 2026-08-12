@@ -151,10 +151,13 @@ export default function App() {
         felicityState={call.felicityState}
         micActive={call.micActive}
         micError={call.micError}
+        playbackError={transport === 'livekit' ? livekit.playbackError : null}
+        mediaActivationRequired={transport === 'livekit' ? livekit.mediaActivationRequired : false}
         isMuted={call.isMuted}
         isSpeakerOn={call.isSpeakerOn}
         onHangUp={hangUp}
         onRetry={retry}
+        onActivateMedia={transport === 'livekit' ? livekit.activateMedia : () => undefined}
         onToggleMute={call.toggleMute}
         onToggleSpeaker={call.toggleSpeaker}
         getMicVolume={call.getMicVolume}

@@ -181,8 +181,21 @@ const agent = defineAgent({
             const clip = clips[index]!
             const pcm = new AudioByteStream(24_000, 1, 2_400)
             const startedAt = Date.now()
+            let streamOpen = true
             const frames = new ReadableStream<AudioFrame>({
               start(controller) {
+                const enqueue = (frame: AudioFrame) => {
+                  if (!streamOpen) return
+                  try {
+                    controller.enqueue(frame)
+                  } catch {
+                    // LiveKit can cancel playout while MiniMax is still
+                    // delivering its final chunks. Treat cancellation as a
+                    // normal terminal state instead of erroring a closed
+                    // ReadableStream controller.
+                    streamOpen = false
+                  }
+                }
                 void streamSynthesizePcm(clip, {
                   onFirstAudioChunk: ({ traceId, profile }) => {
                     const stageMs = Date.now() - startedAt
@@ -209,12 +222,22 @@ const agent = defineAgent({
                     })
                   },
                   onPcmChunk: (chunk) => {
-                    for (const frame of pcm.write(chunk)) controller.enqueue(frame)
+                    for (const frame of pcm.write(chunk)) enqueue(frame)
                   },
                 }).then(() => {
-                  for (const frame of pcm.flush()) controller.enqueue(frame)
+                  if (!streamOpen) return
+                  for (const frame of pcm.flush()) enqueue(frame)
+                  if (!streamOpen) return
+                  streamOpen = false
                   controller.close()
-                }).catch((error) => controller.error(error))
+                }).catch((error) => {
+                  if (!streamOpen) return
+                  streamOpen = false
+                  controller.error(error)
+                })
+              },
+              cancel() {
+                streamOpen = false
               },
             })
             for await (const frame of frames) yield frame
