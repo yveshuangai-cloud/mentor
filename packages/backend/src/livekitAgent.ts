@@ -11,7 +11,7 @@ import {
 } from '@livekit/agents'
 import { STT as DeepgramSTT } from '@livekit/agents-plugin-deepgram'
 import type { AudioFrame } from '@livekit/rtc-node'
-import { config } from './config.js'
+import { config, isVoiceTurnV2LineUser } from './config.js'
 import { autoMigrate } from './db/index.js'
 import { forTenant } from './db/tenantDb.js'
 import { processMessage } from './modules/brain.js'
@@ -24,6 +24,10 @@ import {
   streamSynthesizePcm,
 } from './modules/voice.js'
 import { createShadowTurn, type TurnKernel } from './modules/turnKernel/index.js'
+import {
+  VoiceTurnManager,
+  type VoiceGeneration,
+} from './modules/voiceCall/turnManager.js'
 
 interface MantouParticipantMetadata {
   lineUserId: string
@@ -49,6 +53,7 @@ const agent = defineAgent({
     await ctx.connect()
     const participant = await ctx.waitForParticipant()
     const metadata = parseParticipantMetadata(participant.metadata)
+    const turnV2Enabled = isVoiceTurnV2LineUser(metadata.lineUserId)
     const user = await upsertUser(metadata.lineUserId, {})
     const membership = await resolveMembership(user.id)
     if (!membership || membership.member.status !== 'confirmed' || membership.tenant.status !== 'active') {
@@ -56,6 +61,18 @@ const agent = defineAgent({
     }
     const { tenant, member } = membership
     const db = forTenant(tenant.id)
+    const turnManager = new VoiceTurnManager({
+      enabled: turnV2Enabled,
+      onEvent: (event, payload) => console.info(JSON.stringify({
+        event: `livekit_turn_kernel.${event}`,
+        sessionId: metadata.sessionId,
+        canary: turnV2Enabled,
+        ...payload,
+      })),
+    })
+    let activeGeneration: VoiceGeneration | null = null
+    const ttsGenerations = new WeakMap<object, VoiceGeneration>()
+    const turnsByGeneration = new Map<number, TurnKernel>()
     let activeTurn: TurnKernel | null = null
     let pendingTurnFinish: {
       turn: TurnKernel
@@ -63,6 +80,70 @@ const agent = defineAgent({
       deliveredText: string
       metadata: Record<string, unknown>
     } | null = null
+    const pendingCanaryFinishes = new Map<number, {
+      turn: TurnKernel
+      transcript: string
+      spoken: string
+      chargedPoints: number
+    }>()
+
+    console.info(JSON.stringify({
+      event: 'livekit_turn_kernel.selected',
+      sessionId: metadata.sessionId,
+      mode: turnV2Enabled ? 'v2_canary' : 'legacy',
+    }))
+
+    const finalizeCanaryGeneration = async (generationId: number, interrupted: boolean): Promise<void> => {
+      const pending = pendingCanaryFinishes.get(generationId)
+      if (!pending) return
+      if (interrupted || !turnManager.ownsGeneration(generationId)) {
+        pendingCanaryFinishes.delete(generationId)
+        turnsByGeneration.delete(generationId)
+        pending.turn.fail(new DOMException('Voice playout interrupted', 'AbortError'), 'playout_interrupted')
+        return
+      }
+
+      const conv = await db.query<{ id: number }>(
+        `INSERT INTO conversations
+           (tenant_id, user_id, message_type, user_message, ai_response, points_charged, metadata)
+         VALUES ($1, $2, 'voice_call', $3, $4, $5, $6) RETURNING id`,
+        [user.id, pending.transcript, pending.spoken, pending.chargedPoints, JSON.stringify({
+          sessionId: metadata.sessionId,
+          transport: 'livekit',
+          turnKernel: 'v2_canary',
+          generationId,
+          playoutCompleted: true,
+        })],
+      )
+      const conversationId = conv.rows[0]?.id ?? null
+      pending.turn.finish({
+        conversationId,
+        deliveredText: pending.spoken,
+        metadata: {
+          pointsCharged: pending.chargedPoints,
+          sessionId: metadata.sessionId,
+          generationId,
+          playoutCompleted: true,
+        },
+      })
+      pendingCanaryFinishes.delete(generationId)
+      turnsByGeneration.delete(generationId)
+      void extractAndLearn({
+        tenantId: tenant.id,
+        conversationId,
+        userId: user.id,
+        userName: user.display_name ?? '使用者',
+        userMessage: pending.transcript,
+        aiResponse: pending.spoken,
+        canShapeSoul: user.can_shape_soul,
+      }).catch((error) => console.warn('LiveKit memory learner failed', error))
+      await db.query(
+        `UPDATE voice_call_sessions
+         SET turn_count = turn_count + 1, updated_at = now()
+         WHERE tenant_id = $1 AND session_id = $2`,
+        [metadata.sessionId],
+      ).catch((error) => console.warn('LiveKit session turn count update failed', error))
+    }
 
     await db.query(
       `INSERT INTO voice_call_sessions (tenant_id, session_id, user_id, status, started_at)
@@ -76,6 +157,7 @@ const agent = defineAgent({
       async llmNode(_agentContext, chatCtx) {
         const transcript = latestUserText(chatCtx)
         if (!transcript) return new ReadableStream<string>({ start: (controller) => controller.close() })
+        const generation = activeGeneration
 
         const turn = createShadowTurn({
           tenantId: tenant.id,
@@ -83,9 +165,14 @@ const agent = defineAgent({
           channel: 'livekit_voice',
           inputText: transcript,
           contentKind: 'audio',
-          metadata: { sessionId: metadata.sessionId },
+          metadata: {
+            sessionId: metadata.sessionId,
+            generationId: generation?.id ?? null,
+            turnKernelMode: turnV2Enabled ? 'v2_canary' : 'legacy',
+          },
         })
         activeTurn = turn
+        if (generation) turnsByGeneration.set(generation.id, turn)
         turn.mark('stt.completed', { provider: 'deepgram_livekit' })
 
         return new ReadableStream<string>({
@@ -109,6 +196,7 @@ const agent = defineAgent({
                   message: transcript,
                   semanticQuery: transcript,
                   voiceCall: true,
+                  signal: generation?.signal,
                   onLlmFirstToken: () => console.info(JSON.stringify({
                     event: 'livekit_voice_latency',
                     stage: 'llm_first_token',
@@ -117,11 +205,15 @@ const agent = defineAgent({
                   })),
                   onVoiceSentence: (sentence) => {
                     if (firstSentence) return
+                    if (generation && !turnManager.isCurrent(generation.id)) return
                     firstSentence = clampVoiceCallReply(sentence, 90)
                     if (firstSentence) controller.enqueue(firstSentence)
                   },
                   turn,
                 })
+                if (generation && !turnManager.isCurrent(generation.id)) {
+                  throw new DOMException('Voice generation superseded', 'AbortError')
+                }
                 const spoken = clampVoiceCallReply(output.reply, 90)
                 const remaining = firstSentence && spoken.startsWith(firstSentence)
                   ? spoken.slice(firstSentence.length).trim()
@@ -130,36 +222,48 @@ const agent = defineAgent({
                     : spoken
                 if (remaining) controller.enqueue(remaining)
 
-                const conv = await db.query<{ id: number }>(
-                  `INSERT INTO conversations
-                     (tenant_id, user_id, message_type, user_message, ai_response, points_charged, metadata)
-                   VALUES ($1, $2, 'voice_call', $3, $4, $5, $6) RETURNING id`,
-                  [user.id, transcript, spoken, chargedPoints, JSON.stringify({
-                    sessionId: metadata.sessionId,
-                    transport: 'livekit',
-                  })],
-                )
-                pendingTurnFinish = {
-                  turn,
-                  conversationId: conv.rows[0]?.id ?? null,
-                  deliveredText: spoken,
-                  metadata: { pointsCharged: chargedPoints, sessionId: metadata.sessionId },
+                if (turnV2Enabled && generation) {
+                  // Canary turns are persisted only after the SpeechHandle
+                  // confirms playout. Interrupted replies must not enter
+                  // conversation history or long-term memory.
+                  pendingCanaryFinishes.set(generation.id, {
+                    turn,
+                    transcript,
+                    spoken,
+                    chargedPoints,
+                  })
+                } else {
+                  const conv = await db.query<{ id: number }>(
+                    `INSERT INTO conversations
+                       (tenant_id, user_id, message_type, user_message, ai_response, points_charged, metadata)
+                     VALUES ($1, $2, 'voice_call', $3, $4, $5, $6) RETURNING id`,
+                    [user.id, transcript, spoken, chargedPoints, JSON.stringify({
+                      sessionId: metadata.sessionId,
+                      transport: 'livekit',
+                    })],
+                  )
+                  pendingTurnFinish = {
+                    turn,
+                    conversationId: conv.rows[0]?.id ?? null,
+                    deliveredText: spoken,
+                    metadata: { pointsCharged: chargedPoints, sessionId: metadata.sessionId },
+                  }
+                  void extractAndLearn({
+                    tenantId: tenant.id,
+                    conversationId: conv.rows[0]?.id ?? null,
+                    userId: user.id,
+                    userName: user.display_name ?? '使用者',
+                    userMessage: transcript,
+                    aiResponse: spoken,
+                    canShapeSoul: user.can_shape_soul,
+                  }).catch((error) => console.warn('LiveKit memory learner failed', error))
+                  await db.query(
+                    `UPDATE voice_call_sessions
+                     SET turn_count = turn_count + 1, updated_at = now()
+                     WHERE tenant_id = $1 AND session_id = $2`,
+                    [metadata.sessionId],
+                  )
                 }
-                void extractAndLearn({
-                  tenantId: tenant.id,
-                  conversationId: conv.rows[0]?.id ?? null,
-                  userId: user.id,
-                  userName: user.display_name ?? '使用者',
-                  userMessage: transcript,
-                  aiResponse: spoken,
-                  canShapeSoul: user.can_shape_soul,
-                }).catch((error) => console.warn('LiveKit memory learner failed', error))
-                await db.query(
-                  `UPDATE voice_call_sessions
-                   SET turn_count = turn_count + 1, updated_at = now()
-                   WHERE tenant_id = $1 AND session_id = $2`,
-                  [metadata.sessionId],
-                )
                 controller.close()
               } catch (error) {
                 if (error instanceof InsufficientPointsError) {
@@ -168,14 +272,17 @@ const agent = defineAgent({
                   return
                 }
                 turn.fail(error, 'livekit_voice_turn')
-                controller.error(error)
+                if (error instanceof DOMException && error.name === 'AbortError') controller.close()
+                else controller.error(error)
               }
             })()
           },
         })
       },
       async *ttsNode(_agentContext, text) {
+        const generation = ttsGenerations.get(text as object)
         for await (const raw of text) {
+          if (generation && !turnManager.isCurrent(generation.id)) return
           const clips = planVoiceCallSegments(raw, 90)
           for (let index = 0; index < clips.length; index += 1) {
             const clip = clips[index]!
@@ -186,6 +293,7 @@ const agent = defineAgent({
               start(controller) {
                 const enqueue = (frame: AudioFrame) => {
                   if (!streamOpen) return
+                  if (generation && !turnManager.isCurrent(generation.id)) return
                   try {
                     controller.enqueue(frame)
                   } catch {
@@ -197,6 +305,7 @@ const agent = defineAgent({
                   }
                 }
                 void streamSynthesizePcm(clip, {
+                  signal: generation?.signal,
                   onFirstAudioChunk: ({ traceId, profile }) => {
                     const stageMs = Date.now() - startedAt
                     console.info(JSON.stringify({
@@ -211,7 +320,7 @@ const agent = defineAgent({
                       speed: profile.speed,
                       traceId,
                     }))
-                    activeTurn?.mark('tts.first_audio', {
+                    ;(generation ? turnsByGeneration.get(generation.id) : activeTurn)?.mark('tts.first_audio', {
                       provider: 'minimax',
                       segmentIndex: index,
                       stageMs,
@@ -222,6 +331,7 @@ const agent = defineAgent({
                     })
                   },
                   onPcmChunk: (chunk) => {
+                    if (generation && !turnManager.isCurrent(generation.id)) return
                     for (const frame of pcm.write(chunk)) enqueue(frame)
                   },
                 }).then(() => {
@@ -233,11 +343,15 @@ const agent = defineAgent({
                 }).catch((error) => {
                   if (!streamOpen) return
                   streamOpen = false
-                  controller.error(error)
+                  if (error instanceof DOMException && error.name === 'AbortError') controller.close()
+                  else controller.error(error)
                 })
               },
               cancel() {
                 streamOpen = false
+                if (generation && turnManager.isCurrent(generation.id)) {
+                  turnManager.interrupt('playout_cancelled')
+                }
               },
             })
             for await (const frame of frames) yield frame
@@ -293,7 +407,14 @@ const agent = defineAgent({
         // transitions but never scheduled the LLM turn in production.
         turnDetection: 'manual',
         endpointing: { mode: 'fixed', minDelay: 200, maxDelay: 800 },
-        interruption: { enabled: false, mode: 'vad', minDuration: 250, minWords: 1 },
+        interruption: {
+          enabled: turnV2Enabled,
+          mode: 'vad',
+          minDuration: 500,
+          minWords: 1,
+          falseInterruptionTimeout: 1_500,
+          resumeFalseInterruption: true,
+        },
         preemptiveGeneration: { enabled: true, preemptiveTts: false },
       },
       userAwayTimeout: null,
@@ -306,11 +427,12 @@ const agent = defineAgent({
 
     const scheduleTranscriptCommit = () => {
       if (transcriptCommitTimer) clearTimeout(transcriptCommitTimer)
-      // Deepgram can finalize one segment and begin the next more than one
-      // second later for Mandarin punctuation. A 1.5 s quiet window merges the
-      // whole utterance; this small bounded delay prevents duplicate replies.
-      const commitDelayMs = 1_500
+      // Keep the legacy 1.5 s debounce for the control group. The Yves canary
+      // uses a shorter candidate-end window while retaining Deepgram's 1 s
+      // utterance-end protection against Mandarin mid-sentence pauses.
+      const commitDelayMs = turnV2Enabled ? 850 : 1_500
       transcriptCommitTimer = setTimeout(() => {
+        if (turnV2Enabled) turnManager.markCandidateEnd()
         const userInput = pendingTranscript.trim()
         pendingTranscript = ''
         transcriptCommitTimer = null
@@ -329,19 +451,40 @@ const agent = defineAgent({
           // pipeline without adding a second LLM provider.
           const chatCtx = ChatContext.empty()
           chatCtx.addMessage({ role: 'user', content: userInput })
+          const generation = turnV2Enabled ? turnManager.startGeneration() : null
+          activeGeneration = generation
           const reply = await mantou.llmNode(chatCtx, mantou.toolCtx, {})
-          if (!reply || !acceptingTurns || session._closing) return
+          if (!reply || !acceptingTurns || session._closing) {
+            if (generation) turnManager.interrupt('reply_unavailable')
+            return
+          }
           const [transcriptText, spokenText] = (reply as ReadableStream<string>).tee()
+          if (generation) ttsGenerations.set(spokenText, generation)
           const audio = await mantou.ttsNode(spokenText, {})
           if (!audio) throw new Error('livekit_custom_tts_stream_missing')
-          session.say(transcriptText, {
+          const handle = session.say(transcriptText, {
             audio,
-            allowInterruptions: false,
+            allowInterruptions: turnV2Enabled,
             addToChatCtx: false,
           })
+          if (generation) {
+            handle.addDoneCallback((finished) => {
+              void finalizeCanaryGeneration(generation.id, finished.interrupted).catch((error) => {
+                console.error(JSON.stringify({
+                  event: 'livekit_turn_kernel.finalize_error',
+                  sessionId: metadata.sessionId,
+                  generationId: generation.id,
+                  error: error instanceof Error ? error.message : String(error),
+                }))
+              })
+            })
+            turnManager.attachSpeech(generation.id, handle)
+          }
         })().catch((error) => {
-          console.error(JSON.stringify({
-            event: 'livekit_manual_turn_error',
+          console[error instanceof DOMException && error.name === 'AbortError' ? 'info' : 'error'](JSON.stringify({
+            event: error instanceof DOMException && error.name === 'AbortError'
+              ? 'livekit_turn_kernel.cancelled'
+              : 'livekit_manual_turn_error',
             sessionId: metadata.sessionId,
             error: error instanceof Error ? error.message : String(error),
           }))
@@ -363,6 +506,16 @@ const agent = defineAgent({
         oldState: event.oldState,
         newState: event.newState,
       }))
+      if (turnV2Enabled && event.newState === 'speaking') {
+        const interrupted = turnManager.markUserSpeaking()
+        if (interrupted) {
+          console.info(JSON.stringify({
+            event: 'livekit_barge_in',
+            sessionId: metadata.sessionId,
+            generationId: turnManager.currentGenerationId,
+          }))
+        }
+      }
     })
     session.on(AgentSessionEventTypes.UserInputTranscribed, (event) => {
       console.info(JSON.stringify({
@@ -395,6 +548,15 @@ const agent = defineAgent({
       acceptingTurns = false
       if (transcriptCommitTimer) clearTimeout(transcriptCommitTimer)
       pendingTranscript = ''
+      turnManager.close()
+      for (const [generationId, pending] of pendingCanaryFinishes) {
+        pending.turn.fail(
+          new DOMException('LiveKit session closed before playout completed', 'AbortError'),
+          'session_closed',
+        )
+        turnsByGeneration.delete(generationId)
+      }
+      pendingCanaryFinishes.clear()
       await db.query(
         `UPDATE voice_call_sessions
          SET status = 'ended', ended_at = now(), close_reason = 'livekit_disconnected', updated_at = now()

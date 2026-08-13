@@ -71,6 +71,9 @@ const configSchema = z.object({
   livekitApiSecret: blankAsUndefined(z.string().default('not-configured')),
   livekitAgentName: blankAsUndefined(z.string().default('mantou-agent')),
   livekitEnabled: envBoolean(false),
+  // Comma-separated LINE user IDs for the Turn Kernel V2 canary. An empty
+  // value keeps every caller on the proven legacy path.
+  voiceTurnV2LineUserIds: blankAsUndefined(z.string().default('')),
 
   // Gemini（聽音檔 STT＋畫圖生圖執行端）
   geminiApiKey: blankAsUndefined(z.string().default('not-configured')),
@@ -111,6 +114,7 @@ const rawConfig = {
   livekitApiSecret: process.env.LIVEKIT_API_SECRET?.trim(),
   livekitAgentName: process.env.LIVEKIT_AGENT_NAME?.trim(),
   livekitEnabled: process.env.LIVEKIT_ENABLED,
+  voiceTurnV2LineUserIds: process.env.VOICE_TURN_V2_LINE_USER_IDS,
   geminiApiKey: process.env.GEMINI_API_KEY,
   googleCloudProject: process.env.GOOGLE_CLOUD_PROJECT,
   vertexLocation: process.env.VERTEX_LOCATION,
@@ -124,6 +128,14 @@ const soulAuthorityIds = new Set(
 
 export function isSoulAuthorizedLineUser(lineUserId: string): boolean {
   return soulAuthorityIds.has(lineUserId)
+}
+
+const voiceTurnV2Ids = new Set(
+  config.voiceTurnV2LineUserIds.split(',').map((id) => id.trim()).filter(Boolean),
+)
+
+export function isVoiceTurnV2LineUser(lineUserId: string): boolean {
+  return voiceTurnV2Ids.has(lineUserId)
 }
 
 /** 上線前的健檢：缺什麼直說，不要靜默失敗（本尊的教訓） */
