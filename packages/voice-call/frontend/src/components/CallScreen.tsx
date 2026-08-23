@@ -10,6 +10,7 @@ interface Props {
   micError: string | null;
   playbackError: string | null;
   mediaActivationRequired: boolean;
+  mediaActivationReady: boolean;
   isMuted: boolean;
   isSpeakerOn: boolean;
   onHangUp: () => void;
@@ -44,6 +45,7 @@ export default function CallScreen(props: Props) {
   const ringing = props.callStatus === 'ringing' || props.callStatus === 'connecting';
   const ended = props.callStatus === 'ended';
   const failed = props.callStatus === 'error';
+  const waitingForMedia = props.mediaActivationRequired && (active || props.mediaActivationReady);
   const timer = useTimer(active);
 
   return (
@@ -61,7 +63,13 @@ export default function CallScreen(props: Props) {
           className={`w-40 h-40 rounded-full object-cover object-top shadow-2xl ring-4 ring-white/10 ${ringing || props.felicityState === 'speaking' ? 'animate-pulse' : ''}`}
         />
         <h1 className="mt-7 text-2xl tracking-widest">饅頭</h1>
-        <p className="mt-2 text-white/55 text-sm">{active ? timer : ringing ? '正在接通…' : ended ? '通話已結束' : failed ? '連線失敗' : ''}</p>
+        <p className="mt-2 text-white/55 text-sm">
+          {active
+            ? timer
+            : ringing
+              ? waitingForMedia ? '語音服務已就緒，等待你接通' : '正在接通…'
+              : ended ? '通話已結束' : failed ? '連線失敗' : ''}
+        </p>
 
         {active && (
           <div className="mt-6 min-h-10 flex items-center gap-2 rounded-full bg-white/10 px-5 py-2 text-sm text-white/75">
@@ -75,16 +83,16 @@ export default function CallScreen(props: Props) {
         )}
 
         {props.micError && <p className="mt-4 max-w-xs text-center text-sm text-red-300">{props.micError}</p>}
-        {active && props.mediaActivationRequired && (
+        {waitingForMedia && (
           <div className="mt-5 max-w-xs rounded-2xl border border-amber-300/30 bg-amber-300/10 px-5 py-4 text-center shadow-xl">
-            <p className="text-sm leading-6 text-white">點一下才能讓 LINE 播放饅頭的聲音，並開啟你的麥克風。</p>
+            <p className="text-sm leading-6 text-white">接通後，LINE 才會播放饅頭的聲音並啟用你的麥克風。</p>
             {props.playbackError && <p className="mt-1 text-xs text-amber-100/70">{props.playbackError}</p>}
             <button
               type="button"
               onClick={props.onActivateMedia}
               className="mt-3 w-full rounded-full bg-[#06C755] px-5 py-3 font-medium text-white active:scale-95 transition-transform"
             >
-              開啟聲音並開始通話
+              接通饅頭
             </button>
           </div>
         )}
@@ -93,9 +101,9 @@ export default function CallScreen(props: Props) {
 
       {(active || ringing) && (
         <footer className="relative z-10 w-full max-w-md flex items-center justify-around px-8 pb-12">
-          <Control label={props.isMuted ? '開啟麥克風' : '靜音'} active={props.isMuted} onClick={props.onToggleMute}>🎙</Control>
+          {active && <Control label={props.isMuted ? '開啟麥克風' : '靜音'} active={props.isMuted} onClick={props.onToggleMute}>🎙</Control>}
           <button onClick={props.onHangUp} aria-label="掛斷" className="w-16 h-16 rounded-full bg-red-500 text-2xl shadow-lg active:scale-90 transition-transform">×</button>
-          <Control label={props.isSpeakerOn ? '關閉擴音' : '開啟擴音'} active={props.isSpeakerOn} onClick={props.onToggleSpeaker}>🔊</Control>
+          {active && <Control label={props.isSpeakerOn ? '關閉擴音' : '開啟擴音'} active={props.isSpeakerOn} onClick={props.onToggleSpeaker}>🔊</Control>}
         </footer>
       )}
 

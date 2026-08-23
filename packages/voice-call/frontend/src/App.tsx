@@ -153,6 +153,7 @@ export default function App() {
         micError={call.micError}
         playbackError={transport === 'livekit' ? livekit.playbackError : null}
         mediaActivationRequired={transport === 'livekit' ? livekit.mediaActivationRequired : false}
+        mediaActivationReady={transport === 'livekit' ? livekit.mediaActivationReady : false}
         isMuted={call.isMuted}
         isSpeakerOn={call.isSpeakerOn}
         onHangUp={hangUp}

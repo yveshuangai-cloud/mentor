@@ -33,6 +33,7 @@ export function useLiveKit() {
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [mediaActivationRequired, setMediaActivationRequired] = useState(true);
+  const [mediaActivationReady, setMediaActivationReady] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
 
   const cleanupAudio = useCallback(() => {
@@ -112,6 +113,7 @@ export function useLiveKit() {
   const connect = useCallback(async (session: LiveKitVoiceSession) => {
     setCallStatus('connecting');
     setMicError(null);
+    setMediaActivationReady(false);
     const room = new Room({ adaptiveStream: true, dynacast: true });
     roomRef.current = room;
 
@@ -154,6 +156,7 @@ export function useLiveKit() {
     room.on(RoomEvent.Disconnected, () => {
       setCallStatus('ended');
       setMicActive(false);
+      setMediaActivationReady(false);
       cleanupAudio();
       cleanupAnalysis();
     });
@@ -164,9 +167,14 @@ export function useLiveKit() {
       // capture to begin directly from a tap. Keep the room connected, but do
       // not activate either medium until activateMedia() is called by the CTA.
       setMediaActivationRequired(true);
+      setMediaActivationReady(true);
       setPlaybackError(null);
       setMicActive(false);
-      setCallStatus('active');
+      // A connected LiveKit signalling session is not yet a usable phone
+      // call. LINE WebView still requires a direct user gesture before it can
+      // play remote audio or publish the microphone. Keep the call in the
+      // connecting state until activateMedia() proves both operations work.
+      setCallStatus('connecting');
       setFelicityState('listening');
     } catch (error) {
       setMicError(error instanceof Error ? error.message : '無法啟動麥克風');
@@ -196,6 +204,7 @@ export function useLiveKit() {
       mediaActivatedRef.current = true;
       setMicActive(true);
       setMediaActivationRequired(false);
+      setCallStatus('active');
     } catch (error) {
       const message = error instanceof Error ? error.message : '無法開啟聲音或麥克風';
       setMicError(message);
@@ -210,6 +219,7 @@ export function useLiveKit() {
     cleanupAudio();
     cleanupAnalysis();
     setMicActive(false);
+    setMediaActivationReady(false);
     setCallStatus('ended');
   }, [cleanupAnalysis, cleanupAudio]);
 
@@ -239,6 +249,7 @@ export function useLiveKit() {
     micError,
     playbackError,
     mediaActivationRequired,
+    mediaActivationReady,
     isMuted,
     isSpeakerOn,
     connect,

@@ -35,6 +35,9 @@ token.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe:
 const room = new Room()
 let receivedFrames = 0
 let receivedSamples = 0
+let receivedVoicedSamples = 0
+let receivedPeak = 0
+let receivedEnergy = 0
 let agentTrackSeen = false
 let resolveReply!: () => void
 const reply = new Promise<void>((resolve) => { resolveReply = resolve })
@@ -46,7 +49,16 @@ room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
     for await (const frame of new AudioStream(track, { sampleRate: 24_000, numChannels: 1 })) {
       receivedFrames += 1
       receivedSamples += frame.samplesPerChannel
-      if (receivedSamples >= 4_800) {
+      for (const sample of frame.data) {
+        const magnitude = Math.abs(sample)
+        receivedPeak = Math.max(receivedPeak, magnitude)
+        receivedEnergy += sample * sample
+        if (magnitude >= 50) receivedVoicedSamples += 1
+      }
+      // Do not accept a merely published (but silent) LiveKit track. Require
+      // at least one second of returned media and half a second of audible
+      // samples before declaring the full duplex path healthy.
+      if (receivedSamples >= 24_000 && receivedVoicedSamples >= 12_000) {
         resolveReply()
         break
       }
@@ -189,6 +201,9 @@ try {
     agentTrackSeen,
     receivedFrames,
     receivedAudioMs: Math.round(receivedSamples / 24),
+    receivedVoicedMs: Math.round(receivedVoicedSamples / 24),
+    receivedPeak,
+    receivedRms: Math.round(Math.sqrt(receivedEnergy / Math.max(1, receivedSamples))),
   }))
   await track.close()
 } finally {
