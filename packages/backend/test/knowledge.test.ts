@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validateKnowledgeUpload } from '../src/modules/knowledge.js'
+import { classifyUploadCompletion, validateKnowledgeUpload } from '../src/modules/knowledge.js'
 
 describe('knowledge portal upload validation', () => {
   it('defaults an ordinary PDF to permanent private reference knowledge', () => {
@@ -29,5 +29,15 @@ describe('knowledge portal upload validation', () => {
       sizeBytes: 20,
       retentionPolicy: 'forever-ish',
     })).toThrow('invalid_retention_policy')
+  })
+
+  it.each(['queued', 'processing', 'ready', 'duplicate'])('treats repeated completion in %s as idempotent', (status) => {
+    expect(classifyUploadCompletion(status)).toBe('completed')
+  })
+
+  it('only permits a new completion while the object is uploading', () => {
+    expect(classifyUploadCompletion('uploading')).toBe('uploading')
+    expect(classifyUploadCompletion('failed')).toBe('invalid')
+    expect(classifyUploadCompletion('archived')).toBe('invalid')
   })
 })

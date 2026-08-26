@@ -21,7 +21,7 @@ function errorStatus(error: Error): number {
   if (/bearer|line_id_token|line_login|expired/.test(error.message)) return 401
   if (/forbidden|membership/.test(error.message)) return 403
   if (/not_found/.test(error.message)) return 404
-  if (/invalid|unsupported|too_large|mismatch|already_completed/.test(error.message)) return 400
+  if (/invalid|unsupported|too_large|mismatch|not_completable/.test(error.message)) return 400
   return 500
 }
 

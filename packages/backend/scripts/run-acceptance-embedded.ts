@@ -5,21 +5,39 @@
 import EmbeddedPostgres from 'embedded-postgres'
 import { spawn } from 'node:child_process'
 import { mkdtempSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const dataDir = mkdtempSync(join(tmpdir(), 'mantou-acceptance-pg-'))
-const pg = new EmbeddedPostgres({
-  databaseDir: dataDir,
-  user: 'mantou',
-  password: 'acceptance',
-  port: 55432,
-  persistent: false,
-})
+
+async function availablePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer()
+    server.unref()
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      if (!address || typeof address === 'string') {
+        server.close(() => reject(new Error('acceptance_port_resolution_failed')))
+        return
+      }
+      server.close(() => resolve(address.port))
+    })
+  })
+}
 
 async function main(): Promise<void> {
   console.log('— 啟動拋棄式 PostgreSQL（embedded）—')
+  const pgPort = await availablePort()
+  const pg = new EmbeddedPostgres({
+    databaseDir: dataDir,
+    user: 'mantou',
+    password: 'acceptance',
+    port: pgPort,
+    persistent: false,
+  })
   await pg.initialise()
   await pg.start()
   await pg.createDatabase('mantou_acceptance')
@@ -27,7 +45,7 @@ async function main(): Promise<void> {
   const env = {
     ...process.env,
     NODE_ENV: 'test',
-    DATABASE_URL: 'postgres://mantou:acceptance@localhost:55432/mantou_acceptance',
+    DATABASE_URL: `postgres://mantou:acceptance@127.0.0.1:${pgPort}/mantou_acceptance`,
     DATABASE_PUBLIC_URL: '',
     // Acceptance uses fake users and local LLM overrides. Never inherit production connectors.
     LINE_CHANNEL_TOKEN: 'not-configured',
@@ -57,6 +75,5 @@ async function main(): Promise<void> {
 
 main().catch(async (err) => {
   console.error('embedded pg failed:', err)
-  await pg.stop().catch(() => {})
   process.exit(1)
 })

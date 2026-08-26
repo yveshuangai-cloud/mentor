@@ -2,14 +2,33 @@
 import EmbeddedPostgres from 'embedded-postgres'
 import { spawn } from 'node:child_process'
 import { mkdtempSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const dataDir = mkdtempSync(join(tmpdir(), 'mantou-smoke-pg-'))
-const pg = new EmbeddedPostgres({ databaseDir: dataDir, user: 'mantou', password: 'smoke', port: 55433, persistent: false })
+
+async function availablePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer()
+    server.unref()
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      if (!address || typeof address === 'string') {
+        server.close(() => reject(new Error('smoke_port_resolution_failed')))
+        return
+      }
+      server.close(() => resolve(address.port))
+    })
+  })
+}
 
 async function main(): Promise<void> {
+  const pgPort = await availablePort()
+  const appPort = await availablePort()
+  const pg = new EmbeddedPostgres({ databaseDir: dataDir, user: 'mantou', password: 'smoke', port: pgPort, persistent: false })
   await pg.initialise()
   await pg.start()
   await pg.createDatabase('mantou_smoke')
@@ -20,8 +39,8 @@ async function main(): Promise<void> {
     cwd: backendDir,
     env: {
       ...process.env,
-      DATABASE_URL: 'postgres://mantou:smoke@localhost:55433/mantou_smoke',
-      PORT: '3777',
+      DATABASE_URL: `postgres://mantou:smoke@127.0.0.1:${pgPort}/mantou_smoke`,
+      PORT: String(appPort),
       ADMIN_TOKEN: 'smoke-token',
     },
     stdio: 'pipe',
@@ -38,7 +57,7 @@ async function main(): Promise<void> {
   let up = false
   for (let i = 0; i < 60; i++) {
     try {
-      const r = await fetch('http://localhost:3777/health')
+      const r = await fetch(`http://127.0.0.1:${appPort}/health`)
       if (r.ok) { up = true; break }
     } catch { /* not yet */ }
     await new Promise((res) => setTimeout(res, 500))
@@ -46,26 +65,26 @@ async function main(): Promise<void> {
   check('server boot + /health 200（autoMigrate 全跑過）', up)
 
   if (up) {
-    const admin = await fetch('http://localhost:3777/admin')
+    const admin = await fetch(`http://127.0.0.1:${appPort}/admin`)
     const html = await admin.text()
     check('/admin 回 UI（200 + 標題）', admin.ok && html.includes('饅頭平台'))
-    const noAuth = await fetch('http://localhost:3777/api/admin/point-rules')
+    const noAuth = await fetch(`http://127.0.0.1:${appPort}/api/admin/point-rules`)
     check('admin API 無 token → 401', noAuth.status === 401)
-    const withAuth = await fetch('http://localhost:3777/api/admin/point-rules', {
+    const withAuth = await fetch(`http://127.0.0.1:${appPort}/api/admin/point-rules`, {
       headers: { 'x-admin-token': 'smoke-token' },
     })
     const rules = (await withAuth.json()) as { rules: { gate: string }[] }
     check('admin API 帶 token → 規則表（含 seed 六閘道）', withAuth.ok && rules.rules.length >= 6)
-    const cronNoAuth = await fetch('http://localhost:3777/api/cron/nightly-memory', { method: 'POST' })
+    const cronNoAuth = await fetch(`http://127.0.0.1:${appPort}/api/cron/nightly-memory`, { method: 'POST' })
     check('cron route 無 secret → 401', cronNoAuth.status === 401)
-    const webhookCronNoAuth = await fetch('http://localhost:3777/api/cron/process-webhooks', { method: 'POST' })
+    const webhookCronNoAuth = await fetch(`http://127.0.0.1:${appPort}/api/cron/process-webhooks`, { method: 'POST' })
     check('webhook 補處理 cron 無 secret → 401', webhookCronNoAuth.status === 401)
-    const knowledge = await fetch('http://localhost:3777/knowledge')
+    const knowledge = await fetch(`http://127.0.0.1:${appPort}/knowledge`)
     const knowledgeHtml = await knowledge.text()
     check('/knowledge 回 LIFF 知識庫 UI', knowledge.ok && knowledgeHtml.includes('饅頭知識庫'))
-    const knowledgeNoAuth = await fetch('http://localhost:3777/api/knowledge/documents')
+    const knowledgeNoAuth = await fetch(`http://127.0.0.1:${appPort}/api/knowledge/documents`)
     check('知識庫 API 無 LINE token → 401', knowledgeNoAuth.status === 401)
-    const knowledgeCronNoAuth = await fetch('http://localhost:3777/api/cron/process-knowledge', { method: 'POST' })
+    const knowledgeCronNoAuth = await fetch(`http://127.0.0.1:${appPort}/api/cron/process-knowledge`, { method: 'POST' })
     check('知識庫補處理 cron 無 secret → 401', knowledgeCronNoAuth.status === 401)
   }
 
@@ -77,6 +96,5 @@ async function main(): Promise<void> {
 
 main().catch(async (err) => {
   console.error('smoke crashed:', err)
-  await pg.stop().catch(() => {})
   process.exit(1)
 })

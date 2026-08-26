@@ -512,20 +512,20 @@ async function main(): Promise<void> {
   setEmbedOverride(async (texts: string[]) =>
     texts.map((t) => (/狗|柴犬|豆豆|毛小孩/.test(t) ? [1, 0] : /瑜伽|運動|拉筋/.test(t) ? [0, 1] : [0.5, 0.5])),
   )
-  await indexMemory(tenantA.id, 'learned_fact', 90001, '[fact] 對方養了一隻柴犬叫豆豆')
-  await indexMemory(tenantA.id, 'learned_fact', 90002, '[fact] 對方喜歡喝黑咖啡')
-  await indexMemory(tenantB.id, 'learned_fact', 90003, '[fact] 對方每週二晚上上瑜伽課')
+  await indexMemory(tenantA.id, 'learned_fact', 90001, '[fact] 對方養了一隻柴犬叫豆豆', userA.id)
+  await indexMemory(tenantA.id, 'learned_fact', 90002, '[fact] 對方喜歡喝黑咖啡', userA.id)
+  await indexMemory(tenantB.id, 'learned_fact', 90003, '[fact] 對方每週二晚上上瑜伽課', userB.id)
 
-  const hitsA = await semanticSearch(tenantA.id, '我家毛小孩今天好可愛', 3)
+  const hitsA = await semanticSearch(tenantA.id, userA.id, '我家毛小孩今天好可愛', 3)
   check('語意檢索：毛小孩 → 找到柴犬豆豆', hitsA.length > 0 && hitsA[0].content.includes('豆豆'))
-  const hitsCross = await semanticSearch(tenantA.id, '瑜伽拉筋', 3)
+  const hitsCross = await semanticSearch(tenantA.id, userA.id, '瑜伽拉筋', 3)
   check('fail-closed：A 搜瑜伽撈不到 B 的記憶', !hitsCross.some((h) => h.content.includes('瑜伽')))
-  const blockA = await buildSemanticBlock(tenantA.id, '毛小孩')
+  const blockA = await buildSemanticBlock(tenantA.id, userA.id, '毛小孩')
   check('brain 注入區塊格式正確', blockA.includes('語意想起來的') && blockA.includes('豆豆'))
 
   // 關鍵字 fallback（拔掉 embedding）
   setEmbedOverride(null) // geminiApiKey 未設 → 走 fallback
-  const fallbackHits = await semanticSearch(tenantA.id, '柴犬豆豆', 3)
+  const fallbackHits = await semanticSearch(tenantA.id, userA.id, '柴犬豆豆', 3)
   check('無 embedding 時關鍵字 fallback 仍可檢索', fallbackHits.length > 0 && fallbackHits[0].content.includes('豆豆'))
 
   console.log('\n— 主動關懷（觸發＋護欄）—')

@@ -73,6 +73,21 @@ describe('document knowledge persistence', () => {
     expect(mocks.query.mock.calls[1][0]).toContain('ORDER BY chunk_index ASC')
     expect(mocks.embedTexts).not.toHaveBeenCalled()
   })
+
+  it('filters ordinary retrieval through the owning document lifecycle columns', async () => {
+    mocks.query.mockResolvedValueOnce({
+      rows: [{ citation: '【strategy.pdf，段落 1】', content: 'AI transformation strategy', embedding: null }],
+    })
+
+    const context = await loadRelevantDocumentContext(1, 9, 'AI transformation strategy')
+
+    expect(context).toContain('【strategy.pdf，段落 1】')
+    const sql = mocks.query.mock.calls[0][0] as string
+    expect(sql).toContain('JOIN uploaded_documents d')
+    expect(sql).toContain("d.status = 'ready'")
+    expect(sql).toContain('d.expires_at IS NULL')
+    expect(sql).not.toMatch(/\n\s+AND status =/)
+  })
 })
 
 describe('full document intent', () => {

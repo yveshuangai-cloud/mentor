@@ -198,12 +198,14 @@ export async function loadRelevantDocumentContext(
     content: string
     embedding: number[] | null
   }>(
-    `SELECT citation, content, embedding
-     FROM document_chunks
-     WHERE tenant_id = $1 AND (user_id = $2 OR visibility = 'family_shared')
-       AND status = 'ready'
-       AND (expires_at IS NULL OR expires_at > now())
-     ORDER BY created_at DESC LIMIT 500`,
+    `SELECT c.citation, c.content, c.embedding
+     FROM document_chunks c
+     JOIN uploaded_documents d
+       ON d.tenant_id = c.tenant_id AND d.id = c.document_id
+     WHERE c.tenant_id = $1 AND (c.user_id = $2 OR c.visibility = 'family_shared')
+       AND d.status = 'ready'
+       AND (d.expires_at IS NULL OR d.expires_at > now())
+     ORDER BY c.created_at DESC LIMIT 500`,
     [userId],
   )
   if (!result.rows.length) return ''

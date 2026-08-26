@@ -11,6 +11,7 @@ import type { AieqIdentity } from './aieq/auth.js'
 const storage = new Storage()
 const SIGNED_UPLOAD_TTL_MS = 15 * 60 * 1000
 const MAX_ATTEMPTS = 5
+const IDEMPOTENT_COMPLETION_STATES = new Set(['queued', 'processing', 'ready', 'duplicate'])
 
 export const KNOWLEDGE_TYPES = ['reference', 'policy', 'biography', 'skill_source'] as const
 export const RETENTION_POLICIES = ['30_days', '90_days', 'permanent'] as const
@@ -19,6 +20,12 @@ export const KNOWLEDGE_VISIBILITIES = ['private', 'family_shared'] as const
 export type KnowledgeType = (typeof KNOWLEDGE_TYPES)[number]
 export type RetentionPolicy = (typeof RETENTION_POLICIES)[number]
 export type KnowledgeVisibility = (typeof KNOWLEDGE_VISIBILITIES)[number]
+
+export function classifyUploadCompletion(status: string): 'uploading' | 'completed' | 'invalid' {
+  if (status === 'uploading') return 'uploading'
+  if (IDEMPOTENT_COMPLETION_STATES.has(status)) return 'completed'
+  return 'invalid'
+}
 
 export interface KnowledgeUploadInput {
   fileName: string
@@ -148,13 +155,15 @@ export async function completeKnowledgeUpload(actor: KnowledgeActor, documentId:
   )
   const document = result.rows[0]
   if (!document) throw new Error('knowledge_document_not_found')
-  if (document.status !== 'uploading') throw new Error('knowledge_upload_already_completed')
+  const completion = classifyUploadCompletion(document.status)
+  if (completion === 'completed') return
+  if (completion === 'invalid') throw new Error('knowledge_upload_not_completable')
   if (!document.gcs_bucket || !document.gcs_object) throw new Error('knowledge_object_missing')
   const file = storage.bucket(document.gcs_bucket).file(document.gcs_object)
   const [metadata] = await file.getMetadata()
   const actualSize = Number(metadata.size ?? 0)
   if (!actualSize || actualSize > config.knowledgeMaxUploadBytes || actualSize !== Number(document.original_size_bytes)) {
-    await file.delete({ ignoreNotFound: true })
+    await deleteStoredObject(document.gcs_bucket, document.gcs_object)
     await db.query(
       `UPDATE uploaded_documents SET status = 'failed', processing_error = $3, updated_at = now()
        WHERE tenant_id = $1 AND id = $2`,
@@ -202,12 +211,19 @@ export async function deleteKnowledgeDocument(actor: KnowledgeActor, documentId:
   const document = result.rows[0]
   if (!document) throw new Error('knowledge_document_not_found')
   if (document.gcs_bucket && document.gcs_object) {
-    await storage.bucket(document.gcs_bucket).file(document.gcs_object).delete({ ignoreNotFound: true })
+    await deleteStoredObject(document.gcs_bucket, document.gcs_object)
   }
   await db.query(
     'DELETE FROM uploaded_documents WHERE tenant_id = $1 AND id = $2 AND user_id = $3',
     [documentId, actor.userId],
   )
+}
+
+async function deleteStoredObject(bucketName: string, objectName: string): Promise<void> {
+  const bucket = storage.bucket(bucketName)
+  const [versions] = await bucket.getFiles({ prefix: objectName, versions: true })
+  const exactVersions = versions.filter((file) => file.name === objectName)
+  await Promise.all(exactVersions.map((file) => file.delete({ ignoreNotFound: true })))
 }
 
 interface ClaimedJob {
@@ -277,7 +293,7 @@ async function processJob(job: ClaimedJob): Promise<void> {
     [job.user_id, stored.visibility, extracted.sha256, job.document_id],
   )
   if (duplicate.rows[0]) {
-    await storage.bucket(stored.gcs_bucket).file(stored.gcs_object).delete({ ignoreNotFound: true })
+    await deleteStoredObject(stored.gcs_bucket, stored.gcs_object)
     await db.query(
       `UPDATE uploaded_documents
        SET status = 'duplicate', duplicate_of_document_id = $3, gcs_bucket = NULL, gcs_object = NULL,
