@@ -73,11 +73,12 @@
 - predeploy：16 個 test files、109 tests 全通過；typecheck、build、soul manifest/lint 通過。
 - clean embedded PostgreSQL smoke：9/9 通過，包含 migration、UI、admin/cron/knowledge 未授權阻擋。
 - 知識庫專用 DB acceptance：7/7 通過，包含 private/family_shared/expired/permanent、完整閱讀、hash 去重與 cascade。
-- 正式 Cloud Run：`mantou-backend-00030-2kd`，100% traffic，runtime SA 正確。
+- 正式 Cloud Run：修正版 `mantou-backend-00031-xb4`，100% traffic，runtime SA 正確，health 200。
 - 正式 API：health/UI/bootstrap 200；documents/upload/delete 無授權 401；cron 無／錯 secret 401、正確 secret 200。
 - GCS：bucket 位於 ASIA-EAST1、versioning 啟用、CORS 已設正式兩個 origins；runtime SA 有 objectAdmin 與 self-signing Token Creator。
 - Scheduler：enabled、每分鐘、Asia/Taipei、目標為正式 knowledge cron。
 - Cloud Run 近 24 小時查詢未見 severity >= ERROR。
+- Revision 00031 啟動日誌確認 `016_permanent_knowledge_retention.sql` 已套用並完成 `db ready`；該 revision ERROR 數為 0。
 - dependency audit：原本 1 high 已藉由升級 `@fastify/static` 消除；尚有 2 moderate，來自 GCS SDK 直接相依的 gaxios/uuid，沒有 non-breaking 自動修復版本。
 - 全平台既有 acceptance：90 過／7 敗；失敗集中在既有 nightly memory 與日記／夢斷言，已獨立列為平台回歸債，不算知識庫通過項。
 
@@ -85,10 +86,10 @@
 
 | 缺陷 | 等級 | 狀態 | 說明 |
 |---|---|---|---|
-| 普通文件檢索查錯資料表欄位 | P0 | 已在本機修復，待部署 | `status/expires_at` 屬於 `uploaded_documents`，原查詢卻放在 `document_chunks`。 |
-| 永久文件無法寫入 | P0 | 已在本機修復，待部署 | 009 將 `expires_at` 設為 NOT NULL；新增 016 解除約束，讓 permanent 以 NULL 表示。 |
-| complete 重送非冪等 | P1 | 已在本機修復，待部署 | queued/processing/ready/duplicate 現改為成功 no-op。 |
-| GCS 版本化物件只刪目前版本 | P1 | 已在本機修復，待部署 | 現列出相同 object name 的 generations 後逐一刪除。 |
+| 普通文件檢索查錯資料表欄位 | P0 | 已修復並部署 00031 | `status/expires_at` 屬於 `uploaded_documents`，原查詢卻放在 `document_chunks`。 |
+| 永久文件無法寫入 | P0 | 已修復並部署 00031 | 009 將 `expires_at` 設為 NOT NULL；新增 016 解除約束，讓 permanent 以 NULL 表示。 |
+| complete 重送非冪等 | P1 | 已修復並部署 00031 | queued/processing/ready/duplicate 現改為成功 no-op。 |
+| GCS 版本化物件只刪目前版本 | P1 | 已修復並部署 00031 | 現列出相同 object name 的 generations 後逐一刪除。 |
 | Smoke test 固定 port 且 crash 可能回 0 | P2 | 已在本機修復 | 改為動態空閒 port，crash 明確 exit 1。 |
 | Acceptance 固定 port／舊 semanticSearch 呼叫 | P2 | 已修復 | 改動態 port，並補回 user scope 參數；可正確回報 90/7。 |
 | 靜態檔路由套件有 high advisory | P1 | 已修復 | `@fastify/static` 8.3.0 升至 10.1.3，回歸與 smoke 均通過。 |
