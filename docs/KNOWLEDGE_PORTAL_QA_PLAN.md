@@ -1,7 +1,8 @@
 # 饅頭知識庫第一階段 QA 計畫與執行紀錄
 
-版本：1.0  
-範圍：`/knowledge` LIFF、LINE 身分授權、直傳 GCS、Cloud SQL 文件生命週期、非同步解析、chunks／embeddings／citations、排程補償、刪除與正式環境維運。  
+版本：1.0
+
+範圍：`/knowledge` LIFF、LINE 身分授權、直傳 GCS、Cloud SQL 文件生命週期、非同步解析、chunks／embeddings／citations、排程補償、刪除與正式環境維運。
 正式環境：Cloud Run `mantou-backend`、Cloud SQL `mantou-db`、GCS `mantou-knowledge-2026`、Cloud Scheduler `mantou-process-knowledge`。
 
 ## 1. 驗收不變量
