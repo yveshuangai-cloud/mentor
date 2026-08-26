@@ -42,5 +42,6 @@ upsert_job mantou-nightly-memory "10 3 * * *" /api/cron/nightly-memory 1800s
 upsert_job mantou-fire-promises "* * * * *" /api/cron/fire-promises 60s
 upsert_job mantou-proactive-care "*/15 * * * *" /api/cron/proactive-care 120s
 upsert_job mantou-expire-sweep "5 * * * *" /api/cron/expire-sweep 120s
+upsert_job mantou-process-knowledge "* * * * *" /api/cron/process-knowledge 300s
 
 echo "Mantou schedulers are configured in ${REGION}."

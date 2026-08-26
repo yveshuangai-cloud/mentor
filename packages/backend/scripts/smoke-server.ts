@@ -12,7 +12,7 @@ const pg = new EmbeddedPostgres({ databaseDir: dataDir, user: 'mantou', password
 async function main(): Promise<void> {
   await pg.initialise()
   await pg.start()
-  await pg.createDatabase('manman_smoke')
+  await pg.createDatabase('mantou_smoke')
 
   const backendDir = join(dirname(fileURLToPath(import.meta.url)), '..')
   const tsxCli = join(backendDir, '../../node_modules/tsx/dist/cli.mjs')
@@ -60,6 +60,13 @@ async function main(): Promise<void> {
     check('cron route 無 secret → 401', cronNoAuth.status === 401)
     const webhookCronNoAuth = await fetch('http://localhost:3777/api/cron/process-webhooks', { method: 'POST' })
     check('webhook 補處理 cron 無 secret → 401', webhookCronNoAuth.status === 401)
+    const knowledge = await fetch('http://localhost:3777/knowledge')
+    const knowledgeHtml = await knowledge.text()
+    check('/knowledge 回 LIFF 知識庫 UI', knowledge.ok && knowledgeHtml.includes('饅頭知識庫'))
+    const knowledgeNoAuth = await fetch('http://localhost:3777/api/knowledge/documents')
+    check('知識庫 API 無 LINE token → 401', knowledgeNoAuth.status === 401)
+    const knowledgeCronNoAuth = await fetch('http://localhost:3777/api/cron/process-knowledge', { method: 'POST' })
+    check('知識庫補處理 cron 無 secret → 401', knowledgeCronNoAuth.status === 401)
   }
 
   child.kill()

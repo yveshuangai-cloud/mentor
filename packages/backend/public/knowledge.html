@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>饅頭知識庫</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    :root { --paper:#f6f1e8; --card:#fffdf8; --ink:#2d2a26; --muted:#777067; --line:#ded5c8; --green:#1aa35b; --red:#c64a42; --amber:#b27611; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font-family:system-ui,"Noto Sans TC",sans-serif; }
+    main { width:min(760px,100%); margin:auto; padding:22px 16px 80px; }
+    header { display:flex; align-items:center; gap:12px; margin-bottom:18px; }
+    .avatar { width:48px; height:48px; border-radius:50%; object-fit:cover; background:#e7ddce; }
+    h1 { font-size:22px; margin:0; } h2 { font-size:16px; margin:0 0 12px; }
+    p { margin:4px 0; line-height:1.6; } .muted { color:var(--muted); font-size:13px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; margin:12px 0; box-shadow:0 3px 16px #4b3a2510; }
+    .drop { border:2px dashed #c8b9a6; border-radius:14px; padding:24px 14px; text-align:center; transition:.18s; cursor:pointer; }
+    .drop.over { border-color:var(--green); background:#eef9f1; }
+    input[type=file] { display:none; }
+    button,select { font:inherit; border-radius:10px; padding:10px 12px; border:1px solid var(--line); background:#fff; color:var(--ink); }
+    button { cursor:pointer; } button.primary { background:var(--green); color:white; border-color:var(--green); font-weight:700; }
+    button.danger { color:var(--red); border-color:#e8b5b1; padding:7px 10px; }
+    button:disabled { opacity:.5; cursor:wait; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:12px 0; }
+    label span { display:block; font-size:12px; color:var(--muted); margin-bottom:5px; }
+    select { width:100%; }
+    .progress { height:8px; background:#ece5da; border-radius:99px; overflow:hidden; margin-top:12px; display:none; }
+    .progress i { display:block; width:0; height:100%; background:var(--green); transition:width .2s; }
+    #message { min-height:22px; margin-top:8px; }
+    .document { display:grid; grid-template-columns:1fr auto; gap:8px 12px; padding:13px 0; border-top:1px solid var(--line); }
+    .document:first-child { border-top:0; }
+    .name { font-weight:700; overflow-wrap:anywhere; }
+    .meta { font-size:12px; color:var(--muted); margin-top:4px; }
+    .badge { display:inline-block; font-size:11px; padding:3px 7px; border-radius:99px; background:#eee8df; margin-right:4px; }
+    .ready { color:var(--green); background:#e4f5e9; } .failed { color:var(--red); background:#fbe8e6; } .working { color:var(--amber); background:#fff2d7; }
+    .error { color:var(--red); font-size:12px; margin-top:5px; white-space:pre-wrap; }
+    .notice { border-left:4px solid var(--amber); padding-left:10px; }
+    .hidden { display:none !important; }
+    @media(max-width:520px) { .grid { grid-template-columns:1fr; } main { padding-top:16px; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <img id="avatar" class="avatar" alt="饅頭" src="/aieq/assets/mantou-avatar.jpg" onerror="this.style.display='none'">
+    <div><h1>饅頭知識庫</h1><p id="identity" class="muted">正在確認身分……</p></div>
+  </header>
+
+  <section id="gate" class="card"><p>正在透過 LINE 安全登入。</p></section>
+
+  <section id="workspace" class="hidden">
+    <div class="card notice">
+      <strong>這裡增加的是知識，不會偷偷改變饅頭的靈魂。</strong>
+      <p class="muted">核心人格調整仍需另外明確確認；文件裡的指令只會被當成資料閱讀。</p>
+    </div>
+
+    <section class="card">
+      <h2>上傳一份文件</h2>
+      <div id="drop" class="drop" tabindex="0">
+        <strong>點一下選擇文件</strong>
+        <p class="muted">或把檔案拖到這裡</p>
+        <p id="limit" class="muted">PDF、DOCX、PPTX、XLSX、Markdown 等</p>
+      </div>
+      <input id="file" type="file" accept=".pdf,.docx,.pptx,.xlsx,.md,.txt,.csv,.tsv,.json,.yaml,.yml,.html,.htm,.rtf">
+      <div class="grid">
+        <label><span>知識類型</span><select id="knowledgeType"><option value="reference">參考知識</option><option value="policy">行為／工作原則</option><option value="biography">人物與生平資料</option><option value="skill_source">技能來源材料</option></select></label>
+        <label><span>保存期限</span><select id="retention"><option value="permanent">永久保存</option><option value="90_days">90 天</option><option value="30_days">30 天</option></select></label>
+        <label><span>可見範圍</span><select id="visibility"><option value="private">只有我</option><option value="family_shared">此戶共同知識</option></select></label>
+      </div>
+      <button id="upload" class="primary" disabled>選擇文件</button>
+      <div class="progress" id="progress"><i></i></div>
+      <p id="selected" class="muted"></p>
+      <p id="message" class="muted"></p>
+    </section>
+
+    <section class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h2>已上傳文件</h2><button id="refresh">重新整理</button></div>
+      <div id="documents"><p class="muted">載入中……</p></div>
+    </section>
+  </section>
+</main>
+<script>
+const $ = (s) => document.querySelector(s)
+let idToken = '', selectedFile = null, maxBytes = 0, polling = null
+const statusNames = { uploading:'等待上傳',queued:'排隊中',processing:'吸收中',ready:'已吸收',failed:'失敗',duplicate:'已去重',archived:'已封存' }
+const statusClass = (s) => s === 'ready' ? 'ready' : s === 'failed' ? 'failed' : ['uploading','queued','processing'].includes(s) ? 'working' : ''
+function escapeHtml(value) { const el=document.createElement('div'); el.textContent=String(value ?? ''); return el.innerHTML }
+function humanBytes(n) { if (!n) return '—'; return n < 1048576 ? `${Math.ceil(n/1024)} KB` : `${(n/1048576).toFixed(1)} MB` }
+function friendlyError(code) {
+  return ({knowledge_forbidden:'這個入口只開放給黃逸甫與威廷。',knowledge_membership_required:'尚未找到你的正式饅頭成員身分。',file_too_large:'檔案超過目前上限。',unsupported_document_type:'目前不支援這個文件格式。',uploaded_size_mismatch:'上傳內容大小不一致，請重新選擇檔案。',line_login_not_configured:'LINE Login 尚未設定完成。'}[code] || `操作失敗：${code}`)
+}
+async function api(path, options={}) {
+  const response = await fetch('/api/knowledge'+path,{...options,headers:{'content-type':'application/json',authorization:`Bearer ${idToken}`,...(options.headers||{})}})
+  const body = await response.json().catch(()=>({error:`HTTP ${response.status}`}))
+  if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`)
+  return body
+}
+async function init() {
+  try {
+    const bootstrap = await fetch('/api/knowledge/bootstrap').then(r=>r.json())
+    maxBytes = bootstrap.maxUploadBytes
+    $('#limit').textContent = `PDF、DOCX、PPTX、XLSX、Markdown 等，單檔上限 ${humanBytes(maxBytes)}`
+    if (!bootstrap.liffId || bootstrap.liffId === 'not-configured') throw new Error('knowledge_liff_not_configured')
+    await liff.init({liffId:bootstrap.liffId,withLoginOnExternalBrowser:true})
+    if (!liff.isLoggedIn()) return liff.login()
+    idToken = liff.getIDToken()
+    if (!idToken) throw new Error('missing_line_id_token')
+    const profile = await liff.getProfile().catch(()=>null)
+    $('#identity').textContent = profile ? `${profile.displayName} · 已安全登入` : '已安全登入'
+    if (profile?.pictureUrl) $('#avatar').src = profile.pictureUrl
+    await loadDocuments()
+    $('#gate').classList.add('hidden'); $('#workspace').classList.remove('hidden')
+  } catch (error) {
+    $('#gate').innerHTML = `<strong>暫時無法進入</strong><p class="error">${escapeHtml(friendlyError(error.message))}</p>`
+  }
+}
+function selectFile(file) {
+  selectedFile = file || null
+  $('#selected').textContent = file ? `${file.name} · ${humanBytes(file.size)}` : ''
+  $('#upload').disabled = !file
+  $('#upload').textContent = file ? '上傳並讓饅頭吸收' : '選擇文件'
+}
+async function upload() {
+  if (!selectedFile) return $('#file').click()
+  const button=$('#upload'), bar=$('#progress'), fill=bar.querySelector('i')
+  button.disabled=true; bar.style.display='block'; fill.style.width='2%'; $('#message').textContent='正在取得安全上傳位置……'
+  try {
+    const start = await api('/uploads',{method:'POST',body:JSON.stringify({fileName:selectedFile.name,mimeType:selectedFile.type||'application/octet-stream',sizeBytes:selectedFile.size,knowledgeType:$('#knowledgeType').value,retentionPolicy:$('#retention').value,visibility:$('#visibility').value})})
+    await new Promise((resolve,reject)=>{
+      const xhr=new XMLHttpRequest(); xhr.open('PUT',start.uploadUrl); xhr.setRequestHeader('Content-Type',selectedFile.type||'application/octet-stream')
+      xhr.upload.onprogress=(e)=>{ if(e.lengthComputable) fill.style.width=`${Math.max(2,Math.round(e.loaded/e.total*92))}%` }
+      xhr.onload=()=>xhr.status>=200&&xhr.status<300?resolve():reject(new Error(`GCS ${xhr.status}`)); xhr.onerror=()=>reject(new Error('upload_network_error')); xhr.send(selectedFile)
+    })
+    fill.style.width='96%'; $('#message').textContent='已上傳，正在排入吸收流程……'
+    await api(`/uploads/${start.documentId}/complete`,{method:'POST',body:'{}'})
+    fill.style.width='100%'; $('#message').textContent='已排入處理。完成後饅頭會在 LINE 通知你。'
+    selectFile(null); $('#file').value=''; await loadDocuments()
+  } catch(error) { $('#message').innerHTML=`<span class="error">${escapeHtml(friendlyError(error.message))}</span>` }
+  finally { button.disabled=!selectedFile; setTimeout(()=>{bar.style.display='none';fill.style.width='0'},1200) }
+}
+async function loadDocuments() {
+  const {documents}=await api('/documents')
+  $('#documents').innerHTML = documents.length ? documents.map(d=>`<article class="document"><div><div class="name">${escapeHtml(d.file_name)}</div><div class="meta"><span class="badge ${statusClass(d.status)}">${escapeHtml(statusNames[d.status]||d.status)}</span><span class="badge">${escapeHtml(d.knowledge_type)}</span><span class="badge">${escapeHtml(d.retention_policy)}</span> ${humanBytes(d.original_size_bytes)} · ${d.chunk_count||0} 段</div>${d.processing_error?`<div class="error">${escapeHtml(d.processing_error)}</div>`:''}</div><button class="danger" onclick="removeDocument(${Number(d.id)})">刪除</button></article>`).join('') : '<p class="muted">還沒有文件。上傳第一份資料，饅頭才會真正開始累積這個知識庫。</p>'
+  const working=documents.some(d=>['uploading','queued','processing'].includes(d.status))
+  clearTimeout(polling); if(working) polling=setTimeout(()=>loadDocuments().catch(()=>{}),4000)
+}
+async function removeDocument(id) { if(!confirm('確定刪除這份文件？原始檔、文字分段與向量都會一起刪除。'))return; try{await api(`/documents/${id}`,{method:'DELETE'});await loadDocuments()}catch(e){alert(friendlyError(e.message))} }
+$('#drop').onclick=()=>$('#file').click(); $('#drop').onkeydown=(e)=>{if(e.key==='Enter'||e.key===' ')$('#file').click()}
+$('#file').onchange=(e)=>selectFile(e.target.files[0]); $('#upload').onclick=upload; $('#refresh').onclick=()=>loadDocuments().catch(e=>alert(friendlyError(e.message)))
+for(const event of ['dragenter','dragover']) $('#drop').addEventListener(event,e=>{e.preventDefault();$('#drop').classList.add('over')})
+for(const event of ['dragleave','drop']) $('#drop').addEventListener(event,e=>{e.preventDefault();$('#drop').classList.remove('over')})
+$('#drop').addEventListener('drop',e=>selectFile(e.dataTransfer.files[0]))
+init()
+</script>
+</body>
+</html>

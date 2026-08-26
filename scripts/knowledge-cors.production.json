@@ -1,0 +1,11 @@
+[
+  {
+    "origin": [
+      "https://mantou-backend-646810096510.asia-east1.run.app",
+      "https://mantou-backend-vpcniayryq-de.a.run.app"
+    ],
+    "method": ["PUT", "OPTIONS"],
+    "responseHeader": ["Content-Type", "ETag"],
+    "maxAgeSeconds": 3600
+  }
+]

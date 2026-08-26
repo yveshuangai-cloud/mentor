@@ -99,7 +99,8 @@ export async function saveUploadedDocument(
   const db = forTenant(tenantId)
   const duplicate = await db.query<{ id: number }>(
     `UPDATE uploaded_documents
-     SET expires_at = GREATEST(expires_at, now() + INTERVAL '30 days')
+     SET expires_at = CASE WHEN retention_policy = 'permanent' THEN NULL
+                           ELSE GREATEST(expires_at, now() + INTERVAL '30 days') END
      WHERE tenant_id = $1 AND user_id = $2 AND visibility = $3 AND content_sha256 = $4
      RETURNING id`,
     [userId, visibility, document.sha256],
@@ -121,7 +122,8 @@ export async function saveUploadedDocument(
          (tenant_id, user_id, file_name, file_type, extracted_text, content_sha256, truncated, visibility)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (tenant_id, user_id, visibility, content_sha256)
-       DO UPDATE SET expires_at = GREATEST(uploaded_documents.expires_at, now() + INTERVAL '30 days')
+       DO UPDATE SET expires_at = CASE WHEN uploaded_documents.retention_policy = 'permanent' THEN NULL
+                                       ELSE GREATEST(uploaded_documents.expires_at, now() + INTERVAL '30 days') END
        RETURNING id`,
       [userId, document.fileName, document.fileType, document.text, document.sha256, document.truncated, visibility],
     )
@@ -139,6 +141,22 @@ export async function saveUploadedDocument(
   })
 }
 
+export async function prepareDocumentChunks(document: ExtractedDocument): Promise<{
+  chunks: string[]
+  vectors: (number[] | null)[]
+}> {
+  const chunks = splitDocumentChunks(document.text)
+  let vectors: (number[] | null)[] = chunks.map(() => null)
+  if (embeddingConfigured() && chunks.length) {
+    try {
+      vectors = await embedTexts(chunks)
+    } catch {
+      // Keep content keyword-searchable; a maintenance job can rebuild vectors later.
+    }
+  }
+  return { chunks, vectors }
+}
+
 export async function loadRelevantDocumentContext(
   tenantId: number,
   userId: number,
@@ -151,7 +169,8 @@ export async function loadRelevantDocumentContext(
        FROM uploaded_documents
        WHERE tenant_id = $1
          AND (user_id = $2 OR visibility = 'family_shared')
-         AND expires_at > now()
+          AND status = 'ready'
+          AND (expires_at IS NULL OR expires_at > now())
        ORDER BY CASE WHEN user_id = $2 THEN 0 ELSE 1 END, created_at DESC
        LIMIT 1`,
       [userId],
@@ -182,6 +201,8 @@ export async function loadRelevantDocumentContext(
     `SELECT citation, content, embedding
      FROM document_chunks
      WHERE tenant_id = $1 AND (user_id = $2 OR visibility = 'family_shared')
+       AND status = 'ready'
+       AND (expires_at IS NULL OR expires_at > now())
      ORDER BY created_at DESC LIMIT 500`,
     [userId],
   )

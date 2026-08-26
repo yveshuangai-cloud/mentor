@@ -30,6 +30,8 @@ const configSchema = z.object({
   liffId: blankAsUndefined(z.string().default('not-configured')),
   // AIEQ has its own LIFF app. Never point it at the voice-call LIFF.
   aieqLiffId: blankAsUndefined(z.string().default('not-configured')),
+  // Dedicated knowledge-management LIFF. Never reuse voice-call or AIEQ LIFF IDs.
+  knowledgeLiffId: blankAsUndefined(z.string().default('not-configured')),
   // 精確 LINE User ID 白名單；只從 Secret Manager 注入，不進程式庫。
   soulAuthorizedLineUserIds: blankAsUndefined(z.string().default('')),
 
@@ -79,6 +81,8 @@ const configSchema = z.object({
   geminiApiKey: blankAsUndefined(z.string().default('not-configured')),
   googleCloudProject: blankAsUndefined(z.string().default('project-ed7d5a71-0316-4c2f-896')),
   vertexLocation: blankAsUndefined(z.string().default('global')),
+  knowledgeBucket: blankAsUndefined(z.string().default('mantou-knowledge-2026')),
+  knowledgeMaxUploadBytes: blankAsUndefined(z.coerce.number().int().positive().default(20 * 1024 * 1024)),
 })
 
 const rawConfig = {
@@ -92,6 +96,7 @@ const rawConfig = {
   lineLoginChannelId: process.env.LINE_LOGIN_CHANNEL_ID,
   liffId: process.env.LIFF_ID,
   aieqLiffId: process.env.AIEQ_LIFF_ID,
+  knowledgeLiffId: process.env.KNOWLEDGE_LIFF_ID,
   soulAuthorizedLineUserIds: process.env.SOUL_AUTHORIZED_LINE_USER_IDS,
   anthropicApiKey: process.env.ANTHROPIC_API_KEY,
   llmBaseUrl: process.env.LLM_BASE_URL,
@@ -102,7 +107,7 @@ const rawConfig = {
   linepayChannelSecret: process.env.LINEPAY_CHANNEL_SECRET,
   linepaySandbox: process.env.LINEPAY_SANDBOX,
   publicBaseUrl: process.env.PUBLIC_BASE_URL,
-  cronSecret: process.env.CRON_SECRET,
+  cronSecret: process.env.CRON_SECRET?.trim(),
   enableNightSoul: process.env.ENABLE_NIGHT_SOUL,
   turnShadowEnabled: process.env.TURN_SHADOW_ENABLED,
   minimaxApiKey: process.env.MINIMAX_API_KEY,
@@ -118,6 +123,8 @@ const rawConfig = {
   geminiApiKey: process.env.GEMINI_API_KEY,
   googleCloudProject: process.env.GOOGLE_CLOUD_PROJECT,
   vertexLocation: process.env.VERTEX_LOCATION,
+  knowledgeBucket: process.env.KNOWLEDGE_BUCKET,
+  knowledgeMaxUploadBytes: process.env.KNOWLEDGE_MAX_UPLOAD_BYTES,
 }
 
 export const config = configSchema.parse(rawConfig)

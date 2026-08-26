@@ -11,12 +11,14 @@ import { adminRoutes } from './routes/admin.js'
 import { paymentRoutes } from './routes/payments.js'
 import { mediaRoutes } from './routes/media.js'
 import { aieqRoutes } from './routes/aieq.js'
+import { knowledgeRoutes } from './routes/knowledge.js'
 import { expireSweep } from './modules/points.js'
 import { runNightlyMemory } from './modules/memory/nightly.js'
 import { fireDuePromises } from './modules/proactive/promises.js'
 import { runNightlySoul } from './modules/proactive/nightlife.js'
 import { runProactiveCare } from './modules/proactive/care.js'
 import { nightlyHonestyReflection } from './modules/mirror.js'
+import { processKnowledgeIngestJobs } from './modules/knowledge.js'
 
 async function bootstrap(): Promise<void> {
   const app = Fastify({ logger: true })
@@ -33,6 +35,7 @@ async function bootstrap(): Promise<void> {
   })
   await app.register(webhookRoutes, { prefix: '/api/webhook' })
   await app.register(aieqRoutes, { prefix: '/api/aieq' })
+  await app.register(knowledgeRoutes, { prefix: '/api/knowledge' })
   await app.register(adminRoutes, { prefix: '/api/admin' })
   await app.register(paymentRoutes, { prefix: '/api/payments' })
   await app.register(mediaRoutes, { prefix: '/media' })
@@ -47,6 +50,11 @@ async function bootstrap(): Promise<void> {
 
   app.get('/aieq', async (_req, reply) => {
     const html = await readFile(join(dirname(fileURLToPath(import.meta.url)), '../public/aieq.html'), 'utf8')
+    return reply.type('text/html; charset=utf-8').send(html)
+  })
+
+  app.get('/knowledge', async (_req, reply) => {
+    const html = await readFile(join(dirname(fileURLToPath(import.meta.url)), '../public/knowledge.html'), 'utf8')
     return reply.type('text/html; charset=utf-8').send(html)
   })
 
@@ -98,6 +106,15 @@ async function bootstrap(): Promise<void> {
     }
     const result = await processQueuedWebhookEvents(app, 50)
     return { ok: true, ...result }
+  })
+
+  // Durable knowledge ingestion. Upload completion gives it a best-effort kick;
+  // this scheduler is the recovery path when Cloud Run freezes after responding.
+  app.post('/api/cron/process-knowledge', async (req, reply) => {
+    if (!config.cronSecret || req.headers['x-cron-secret'] !== config.cronSecret) {
+      return reply.code(401).send({ error: 'unauthorized' })
+    }
+    return { ok: true, ...(await processKnowledgeIngestJobs(3)) }
   })
 
   // 本地開發才用計時器；Cloud Run request-based billing 下閒置實例會被回收，計時器不可靠
