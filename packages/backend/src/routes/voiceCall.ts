@@ -34,6 +34,43 @@ let livekitHealthCache: { checkedAt: number; ok: boolean; note: string } = {
   note: 'LiveKit not checked',
 }
 
+const livekitClientTelemetryEvents = new Set([
+  'room.connected',
+  'room.disconnected',
+  'media.activation.succeeded',
+  'media.activation.failed',
+  'microphone.audio.detected',
+  'remote.audio.subscribed',
+  'remote.audio.play.resolved',
+  'remote.audio.play.failed',
+  'remote.audio.playing',
+  'remote.audio.audible',
+  'audio.playback.status.changed',
+])
+
+function compactTelemetryDetails(input: unknown): Record<string, boolean | number | string | null> {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
+  const allowed = new Set([
+    'canPlaybackAudio',
+    'microphonePublished',
+    'mediaActivated',
+    'speakerEnabled',
+    'muted',
+    'trackReadyState',
+    'reason',
+    'errorName',
+    'errorMessage',
+    'volume',
+  ])
+  const result: Record<string, boolean | number | string | null> = {}
+  for (const [key, value] of Object.entries(input)) {
+    if (!allowed.has(key)) continue
+    if (typeof value === 'boolean' || typeof value === 'number' || value === null) result[key] = value
+    else if (typeof value === 'string') result[key] = value.slice(0, 240)
+  }
+  return result
+}
+
 async function probeLiveKit(): Promise<{ ok: boolean; note: string }> {
   const configured = config.livekitApiKey !== 'not-configured'
     && config.livekitApiSecret !== 'not-configured'
@@ -107,6 +144,30 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
       && voiceConfigured(),
   }))
 
+  app.post<{
+    Body: { token?: string; sessionId?: string; event?: string; details?: unknown }
+  }>('/telemetry', async (request, reply) => {
+    try {
+      const tokenPayload = verifyVoiceToken(request.body?.token ?? '')
+      const sessionId = request.body?.sessionId ?? ''
+      const clientEvent = request.body?.event ?? ''
+      if (tokenPayload.sid !== sessionId || !livekitClientTelemetryEvents.has(clientEvent)) {
+        return reply.code(400).send({ error: 'voice_telemetry_invalid' })
+      }
+      request.log.info({
+        event: 'voice_client_telemetry',
+        clientEvent,
+        sessionId,
+        details: compactTelemetryDetails(request.body?.details),
+        userAgent: String(request.headers['user-agent'] ?? '').slice(0, 320),
+      }, 'voice client telemetry')
+      return reply.code(204).send()
+    } catch (error) {
+      request.log.warn({ err: error }, 'voice client telemetry authorization failed')
+      return reply.code(401).send({ error: 'voice_telemetry_unauthorized' })
+    }
+  })
+
   app.post<{ Body: { idToken?: string } }>('/session', async (request, reply) => {
     try {
       const identity = await verifyLiffIdToken(request.body?.idToken ?? '')
@@ -153,6 +214,7 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
           token: await accessToken.toJwt(),
           url: config.livekitUrl,
           roomName,
+          telemetryToken: issueVoiceToken(identity.lineUserId, sessionId),
         }
       }
       return {
@@ -160,6 +222,7 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
         sessionId,
         token: issueVoiceToken(identity.lineUserId, sessionId),
         websocketPath: '/api/voice-call/ws',
+        telemetryToken: issueVoiceToken(identity.lineUserId, sessionId),
       }
     } catch (error) {
       request.log.warn({ err: error }, 'LIFF voice session authorization failed')

@@ -32,6 +32,8 @@ export class VoiceTurnManager {
   private generationId = 0
   private controller: AbortController | null = null
   private speech: InterruptibleSpeech | null = null
+  private outputAudioStarted = false
+  private queuedInput = ''
   private _state: VoiceTurnState = 'idle'
   private readonly onEvent: NonNullable<VoiceTurnManagerOptions['onEvent']>
 
@@ -52,9 +54,21 @@ export class VoiceTurnManager {
     return this.controller !== null && !this.controller.signal.aborted
   }
 
+  get hasOutputAudioStarted(): boolean {
+    return this.hasActiveGeneration && this.outputAudioStarted
+  }
+
+  get hasQueuedInput(): boolean {
+    return this.queuedInput.length > 0
+  }
+
   markUserSpeaking(): boolean {
     this.transition('user_speaking')
-    if (!this.enabled || !this.hasActiveGeneration) return false
+    // A transcript that arrives while the model is still thinking is usually a
+    // continuation (or a caller checking whether the call is alive), not a
+    // barge-in. Cancelling before any audio is emitted can starve the caller of
+    // every reply. Only interrupt an answer that has actually begun playout.
+    if (!this.enabled || !this.hasOutputAudioStarted) return false
     return this.interrupt('barge_in')
   }
 
@@ -67,6 +81,7 @@ export class VoiceTurnManager {
     this.generationId += 1
     this.controller = new AbortController()
     this.speech = null
+    this.outputAudioStarted = false
     this.transition('committed', { generationId: this.generationId })
     this.transition('agent_thinking', { generationId: this.generationId })
     return { id: this.generationId, signal: this.controller.signal }
@@ -83,6 +98,29 @@ export class VoiceTurnManager {
       if (this.isCurrent(generationId)) this.complete(generationId)
     })
     return true
+  }
+
+  markOutputAudioStarted(generationId: number): boolean {
+    if (!this.isCurrent(generationId)) return false
+    this.outputAudioStarted = true
+    this.onEvent('output.started', { generationId })
+    return true
+  }
+
+  queueInput(input: string): void {
+    const normalized = input.trim()
+    if (!normalized) return
+    this.queuedInput = `${this.queuedInput} ${normalized}`.trim()
+    this.onEvent('input.queued', {
+      queuedChars: this.queuedInput.length,
+      generationId: this.generationId,
+    })
+  }
+
+  takeQueuedInput(): string {
+    const input = this.queuedInput
+    this.queuedInput = ''
+    return input
   }
 
   isCurrent(generationId: number): boolean {
@@ -107,6 +145,7 @@ export class VoiceTurnManager {
       // authoritative cancellation boundary.
     }
     this.speech = null
+    this.outputAudioStarted = false
     this.transition('interrupted', { generationId: interruptedGenerationId, reason })
     this.onEvent('generation.interrupted', { generationId: interruptedGenerationId, reason })
     return true
@@ -116,6 +155,7 @@ export class VoiceTurnManager {
     if (!this.isCurrent(generationId)) return false
     this.controller = null
     this.speech = null
+    this.outputAudioStarted = false
     this.transition('idle', { generationId })
     this.onEvent('generation.completed', { generationId })
     return true
@@ -125,6 +165,8 @@ export class VoiceTurnManager {
     if (this.hasActiveGeneration) this.interrupt('session_closed')
     this.controller = null
     this.speech = null
+    this.outputAudioStarted = false
+    this.queuedInput = ''
     this.transition('idle')
   }
 

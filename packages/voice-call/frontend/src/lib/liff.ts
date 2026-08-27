@@ -11,6 +11,7 @@ export interface WebSocketVoiceSession {
   sessionId: string;
   token: string;
   websocketPath: string;
+  telemetryToken: string;
 }
 
 export interface LiveKitVoiceSession {
@@ -19,6 +20,7 @@ export interface LiveKitVoiceSession {
   token: string;
   url: string;
   roomName: string;
+  telemetryToken: string;
 }
 
 export type VoiceSession = WebSocketVoiceSession | LiveKitVoiceSession;
@@ -66,6 +68,26 @@ export async function createVoiceSession(): Promise<VoiceSession> {
   });
   if (!response.ok) throw new Error('無法建立安全通話，請稍後再試。');
   return response.json() as Promise<VoiceSession>;
+}
+
+export function sendVoiceTelemetry(
+  session: LiveKitVoiceSession,
+  event: string,
+  details: Record<string, boolean | number | string | null> = {},
+): void {
+  void fetch('/api/voice-call/telemetry', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      token: session.telemetryToken,
+      sessionId: session.sessionId,
+      event,
+      details,
+    }),
+    keepalive: true,
+  }).catch(() => {
+    // Telemetry is strictly best-effort and must never affect a live call.
+  });
 }
 
 export function closeLiff(): void {

@@ -7,12 +7,35 @@ describe('VoiceTurnManager', () => {
     const manager = new VoiceTurnManager({ enabled: true })
     const generation = manager.startGeneration()
     manager.attachSpeech(generation.id, { interrupt })
+    manager.markOutputAudioStarted(generation.id)
 
     expect(manager.markUserSpeaking()).toBe(true)
     expect(generation.signal.aborted).toBe(true)
     expect(interrupt).toHaveBeenCalledWith(true)
     expect(manager.state).toBe('interrupted')
     expect(manager.isCurrent(generation.id)).toBe(false)
+  })
+
+  it('keeps a generation alive when the caller continues before audio playout', () => {
+    const interrupt = vi.fn()
+    const manager = new VoiceTurnManager({ enabled: true })
+    const generation = manager.startGeneration()
+    manager.attachSpeech(generation.id, { interrupt })
+
+    expect(manager.markUserSpeaking()).toBe(false)
+    expect(generation.signal.aborted).toBe(false)
+    expect(interrupt).not.toHaveBeenCalled()
+  })
+
+  it('merges queued transcript fragments in arrival order', () => {
+    const manager = new VoiceTurnManager({ enabled: true })
+
+    manager.queueInput('請幫我查一下')
+    manager.queueInput('最近的 AI 新聞')
+
+    expect(manager.hasQueuedInput).toBe(true)
+    expect(manager.takeQueuedInput()).toBe('請幫我查一下 最近的 AI 新聞')
+    expect(manager.hasQueuedInput).toBe(false)
   })
 
   it('does not interrupt the legacy control group', () => {

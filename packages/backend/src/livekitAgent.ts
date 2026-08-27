@@ -71,6 +71,8 @@ const agent = defineAgent({
       })),
     })
     let activeGeneration: VoiceGeneration | null = null
+    let userIsSpeaking = false
+    let drainQueuedInput: () => Promise<void> = async () => undefined
     const ttsGenerations = new WeakMap<object, VoiceGeneration>()
     const turnsByGeneration = new Map<number, TurnKernel>()
     let activeTurn: TurnKernel | null = null
@@ -95,11 +97,15 @@ const agent = defineAgent({
 
     const finalizeCanaryGeneration = async (generationId: number, interrupted: boolean): Promise<void> => {
       const pending = pendingCanaryFinishes.get(generationId)
-      if (!pending) return
+      if (!pending) {
+        await drainQueuedInput()
+        return
+      }
       if (interrupted || !turnManager.ownsGeneration(generationId)) {
         pendingCanaryFinishes.delete(generationId)
         turnsByGeneration.delete(generationId)
         pending.turn.fail(new DOMException('Voice playout interrupted', 'AbortError'), 'playout_interrupted')
+        await drainQueuedInput()
         return
       }
 
@@ -143,6 +149,7 @@ const agent = defineAgent({
          WHERE tenant_id = $1 AND session_id = $2`,
         [metadata.sessionId],
       ).catch((error) => console.warn('LiveKit session turn count update failed', error))
+      await drainQueuedInput()
     }
 
     await db.query(
@@ -307,6 +314,12 @@ const agent = defineAgent({
                 void streamSynthesizePcm(clip, {
                   signal: generation?.signal,
                   onFirstAudioChunk: ({ traceId, profile }) => {
+                    if (generation) {
+                      const marked = turnManager.markOutputAudioStarted(generation.id)
+                      if (marked && userIsSpeaking) {
+                        turnManager.interrupt('barge_in_overlap')
+                      }
+                    }
                     const stageMs = Date.now() - startedAt
                     console.info(JSON.stringify({
                       event: 'livekit_voice_latency',
@@ -425,62 +438,84 @@ const agent = defineAgent({
     let transcriptCommitTimer: NodeJS.Timeout | null = null
     let acceptingTurns = false
 
+    const runUserInput = async (userInput: string): Promise<void> => {
+      if (!userInput || !acceptingTurns || !session._started || session._closing) return
+      if (turnV2Enabled && turnManager.hasActiveGeneration) {
+        // A final STT segment that arrives before the current answer has
+        // finished is queued instead of superseding the generation. This
+        // prevents repeated short Mandarin segments (or "喂？" retries) from
+        // cancelling every answer before the caller hears one.
+        turnManager.queueInput(userInput)
+        return
+      }
+      console.info(JSON.stringify({
+        event: 'livekit_manual_turn_commit',
+        sessionId: metadata.sessionId,
+        transcriptChars: userInput.length,
+      }))
+      const chatCtx = ChatContext.empty()
+      chatCtx.addMessage({ role: 'user', content: userInput })
+      const generation = turnV2Enabled ? turnManager.startGeneration() : null
+      activeGeneration = generation
+      const reply = await mantou.llmNode(chatCtx, mantou.toolCtx, {})
+      if (!reply || !acceptingTurns || session._closing) {
+        if (generation) turnManager.interrupt('reply_unavailable')
+        return
+      }
+      const [transcriptText, spokenText] = (reply as ReadableStream<string>).tee()
+      if (generation) ttsGenerations.set(spokenText, generation)
+      const audio = await mantou.ttsNode(spokenText, {})
+      if (!audio) throw new Error('livekit_custom_tts_stream_missing')
+      const handle = session.say(transcriptText, {
+        audio,
+        allowInterruptions: turnV2Enabled,
+        addToChatCtx: false,
+      })
+      if (generation) {
+        // Register the manager callback first so it releases the current
+        // generation before the persistence callback drains queued input.
+        turnManager.attachSpeech(generation.id, handle)
+        handle.addDoneCallback((finished) => {
+          void finalizeCanaryGeneration(generation.id, finished.interrupted).catch((error) => {
+            console.error(JSON.stringify({
+              event: 'livekit_turn_kernel.finalize_error',
+              sessionId: metadata.sessionId,
+              generationId: generation.id,
+              error: error instanceof Error ? error.message : String(error),
+            }))
+          })
+        })
+      }
+    }
+
+    drainQueuedInput = async () => {
+      if (!turnV2Enabled || turnManager.hasActiveGeneration) return
+      const queued = turnManager.takeQueuedInput()
+      if (!queued) return
+      console.info(JSON.stringify({
+        event: 'livekit_turn_kernel.input.draining',
+        sessionId: metadata.sessionId,
+        queuedChars: queued.length,
+      }))
+      await runUserInput(queued)
+    }
+
     const scheduleTranscriptCommit = () => {
       if (transcriptCommitTimer) clearTimeout(transcriptCommitTimer)
-      // Keep the legacy 1.5 s debounce for the control group. The Yves canary
-      // uses a shorter candidate-end window while retaining Deepgram's 1 s
-      // utterance-end protection against Mandarin mid-sentence pauses.
-      const commitDelayMs = turnV2Enabled ? 850 : 1_500
+      // Deepgram's utterance-end protection is 1 s. Give the Yves canary a
+      // small extra merge window so Mandarin clause pauses remain one turn.
+      const commitDelayMs = turnV2Enabled ? 1_200 : 1_500
       transcriptCommitTimer = setTimeout(() => {
-        if (turnV2Enabled) turnManager.markCandidateEnd()
         const userInput = pendingTranscript.trim()
         pendingTranscript = ''
         transcriptCommitTimer = null
         if (!userInput) return
         if (!acceptingTurns || !session._started || session._closing) return
-        console.info(JSON.stringify({
-          event: 'livekit_manual_turn_commit',
-          sessionId: metadata.sessionId,
-          transcriptChars: userInput.length,
-        }))
-        void (async () => {
-          // AgentSession.generateReply() requires a framework LLM instance even
-          // when this agent supplies a custom llmNode. Mantou intentionally
-          // routes replies through processMessage(), so invoke that node and
-          // hand its text stream to say(); this preserves the normal TTS/output
-          // pipeline without adding a second LLM provider.
-          const chatCtx = ChatContext.empty()
-          chatCtx.addMessage({ role: 'user', content: userInput })
-          const generation = turnV2Enabled ? turnManager.startGeneration() : null
-          activeGeneration = generation
-          const reply = await mantou.llmNode(chatCtx, mantou.toolCtx, {})
-          if (!reply || !acceptingTurns || session._closing) {
-            if (generation) turnManager.interrupt('reply_unavailable')
-            return
+        if (turnV2Enabled && !turnManager.hasActiveGeneration) turnManager.markCandidateEnd()
+        void runUserInput(userInput).catch(async (error) => {
+          if (turnV2Enabled && activeGeneration && turnManager.isCurrent(activeGeneration.id)) {
+            turnManager.interrupt('turn_error')
           }
-          const [transcriptText, spokenText] = (reply as ReadableStream<string>).tee()
-          if (generation) ttsGenerations.set(spokenText, generation)
-          const audio = await mantou.ttsNode(spokenText, {})
-          if (!audio) throw new Error('livekit_custom_tts_stream_missing')
-          const handle = session.say(transcriptText, {
-            audio,
-            allowInterruptions: turnV2Enabled,
-            addToChatCtx: false,
-          })
-          if (generation) {
-            handle.addDoneCallback((finished) => {
-              void finalizeCanaryGeneration(generation.id, finished.interrupted).catch((error) => {
-                console.error(JSON.stringify({
-                  event: 'livekit_turn_kernel.finalize_error',
-                  sessionId: metadata.sessionId,
-                  generationId: generation.id,
-                  error: error instanceof Error ? error.message : String(error),
-                }))
-              })
-            })
-            turnManager.attachSpeech(generation.id, handle)
-          }
-        })().catch((error) => {
           console[error instanceof DOMException && error.name === 'AbortError' ? 'info' : 'error'](JSON.stringify({
             event: error instanceof DOMException && error.name === 'AbortError'
               ? 'livekit_turn_kernel.cancelled'
@@ -488,6 +523,7 @@ const agent = defineAgent({
             sessionId: metadata.sessionId,
             error: error instanceof Error ? error.message : String(error),
           }))
+          await drainQueuedInput()
         })
       }, commitDelayMs)
     }
@@ -506,6 +542,7 @@ const agent = defineAgent({
         oldState: event.oldState,
         newState: event.newState,
       }))
+      userIsSpeaking = event.newState === 'speaking'
       if (turnV2Enabled && event.newState === 'speaking') {
         const interrupted = turnManager.markUserSpeaking()
         if (interrupted) {

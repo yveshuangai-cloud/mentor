@@ -7,13 +7,15 @@ import {
   type RemoteTrack,
   type RemoteTrackPublication,
 } from 'livekit-client';
-import type { LiveKitVoiceSession } from '../lib/liff';
+import { sendVoiceTelemetry, type LiveKitVoiceSession } from '../lib/liff';
 import type { CallStatus, FelicityState } from './useWebSocket';
 
 const agentStates = new Set<FelicityState>(['listening', 'thinking', 'speaking']);
 
 export function useLiveKit() {
   const roomRef = useRef<Room | null>(null);
+  const sessionRef = useRef<LiveKitVoiceSession | null>(null);
+  const telemetryOnceRef = useRef(new Set<string>());
   const remoteParticipantRef = useRef<RemoteParticipant | null>(null);
   const audioElementsRef = useRef<HTMLMediaElement[]>([]);
   const mediaActivatedRef = useRef(false);
@@ -35,6 +37,18 @@ export function useLiveKit() {
   const [mediaActivationRequired, setMediaActivationRequired] = useState(true);
   const [mediaActivationReady, setMediaActivationReady] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+
+  const emitTelemetry = useCallback((
+    event: string,
+    details: Record<string, boolean | number | string | null> = {},
+    onceKey?: string,
+  ) => {
+    if (onceKey && telemetryOnceRef.current.has(onceKey)) return;
+    const session = sessionRef.current;
+    if (!session) return;
+    if (onceKey) telemetryOnceRef.current.add(onceKey);
+    sendVoiceTelemetry(session, event, details);
+  }, []);
 
   const cleanupAudio = useCallback(() => {
     for (const element of audioElementsRef.current) element.remove();
@@ -102,15 +116,43 @@ export function useLiveKit() {
   }, []);
 
   const getMicVolume = useCallback(
-    () => Math.max(readVolume('mic'), roomRef.current?.localParticipant.audioLevel ?? 0),
-    [readVolume],
+    () => {
+      const volume = Math.max(readVolume('mic'), roomRef.current?.localParticipant.audioLevel ?? 0);
+      if (volume >= 0.01) emitTelemetry('microphone.audio.detected', { volume }, 'microphone.audio.detected');
+      return volume;
+    },
+    [emitTelemetry, readVolume],
   );
   const getRemoteVolume = useCallback(
-    () => Math.max(readVolume('remote'), remoteParticipantRef.current?.audioLevel ?? 0),
-    [readVolume],
+    () => {
+      const volume = Math.max(readVolume('remote'), remoteParticipantRef.current?.audioLevel ?? 0);
+      if (volume >= 0.01) emitTelemetry('remote.audio.audible', { volume }, 'remote.audio.audible');
+      return volume;
+    },
+    [emitTelemetry, readVolume],
   );
 
+  const playRemoteElement = useCallback(async (element: HTMLMediaElement) => {
+    try {
+      await element.play();
+      emitTelemetry('remote.audio.play.resolved', {
+        canPlaybackAudio: roomRef.current?.canPlaybackAudio ?? false,
+        speakerEnabled: speakerOnRef.current,
+      }, 'remote.audio.play.resolved');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'LINE blocked audio playback';
+      emitTelemetry('remote.audio.play.failed', {
+        canPlaybackAudio: roomRef.current?.canPlaybackAudio ?? false,
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+        errorMessage: message,
+      });
+      throw error;
+    }
+  }, [emitTelemetry]);
+
   const connect = useCallback(async (session: LiveKitVoiceSession) => {
+    sessionRef.current = session;
+    telemetryOnceRef.current.clear();
     setCallStatus('connecting');
     setMicError(null);
     setMediaActivationReady(false);
@@ -132,14 +174,28 @@ export function useLiveKit() {
       document.body.appendChild(element);
       audioElementsRef.current.push(element);
       attachVolumeAnalyser('remote', track.mediaStreamTrack);
+      emitTelemetry('remote.audio.subscribed', {
+        mediaActivated: mediaActivatedRef.current,
+        trackReadyState: track.mediaStreamTrack.readyState,
+      }, 'remote.audio.subscribed');
+      element.addEventListener('playing', () => {
+        emitTelemetry('remote.audio.playing', {
+          canPlaybackAudio: room.canPlaybackAudio,
+          muted: element.muted,
+        }, 'remote.audio.playing');
+      }, { once: true });
       if (mediaActivatedRef.current) {
-        void element.play().catch((error: unknown) => {
+        void playRemoteElement(element).catch((error: unknown) => {
           setMediaActivationRequired(true);
           setPlaybackError(error instanceof Error ? error.message : 'LINE 阻擋了音訊播放');
         });
       }
     });
     room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+      emitTelemetry('audio.playback.status.changed', {
+        canPlaybackAudio: room.canPlaybackAudio,
+        mediaActivated: mediaActivatedRef.current,
+      });
       if (!room.canPlaybackAudio) {
         setMediaActivationRequired(true);
         setPlaybackError('LINE 需要你點一下，才能播放饅頭的聲音');
@@ -154,6 +210,10 @@ export function useLiveKit() {
       if (state && agentStates.has(state as FelicityState)) setFelicityState(state as FelicityState);
     });
     room.on(RoomEvent.Disconnected, () => {
+      emitTelemetry('room.disconnected', {
+        canPlaybackAudio: room.canPlaybackAudio,
+        mediaActivated: mediaActivatedRef.current,
+      }, 'room.disconnected');
       setCallStatus('ended');
       setMicActive(false);
       setMediaActivationReady(false);
@@ -163,6 +223,9 @@ export function useLiveKit() {
 
     try {
       await room.connect(session.url, session.token, { autoSubscribe: true });
+      emitTelemetry('room.connected', {
+        canPlaybackAudio: room.canPlaybackAudio,
+      }, 'room.connected');
       // LINE's WKWebView/Android WebView requires playback and microphone
       // capture to begin directly from a tap. Keep the room connected, but do
       // not activate either medium until activateMedia() is called by the CTA.
@@ -182,7 +245,7 @@ export function useLiveKit() {
       await room.disconnect();
       throw error;
     }
-  }, [attachVolumeAnalyser, cleanupAnalysis, cleanupAudio]);
+  }, [attachVolumeAnalyser, cleanupAnalysis, cleanupAudio, emitTelemetry, playRemoteElement]);
 
   const activateMedia = useCallback(async () => {
     const room = roomRef.current;
@@ -194,24 +257,38 @@ export function useLiveKit() {
       // user gesture for strict LINE/iOS autoplay and microphone policies.
       const audioStarted = room.startAudio();
       const microphoneStarted = room.localParticipant.setMicrophoneEnabled(true);
-      await Promise.all([audioStarted, microphoneStarted]);
+      const [, microphonePublication] = await Promise.all([audioStarted, microphoneStarted]);
       await Promise.all(audioElementsRef.current.map(async (element) => {
         element.muted = !speakerOnRef.current;
-        await element.play();
+        await playRemoteElement(element);
       }));
-      const microphoneTrack = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
-      if (microphoneTrack) attachVolumeAnalyser('mic', microphoneTrack.mediaStreamTrack);
+      const microphoneTrack = microphonePublication?.track
+        ?? room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
+      if (!microphoneTrack) throw new Error('麥克風已授權，但音軌沒有發布到通話房間');
+      attachVolumeAnalyser('mic', microphoneTrack.mediaStreamTrack);
       mediaActivatedRef.current = true;
       setMicActive(true);
       setMediaActivationRequired(false);
       setCallStatus('active');
+      emitTelemetry('media.activation.succeeded', {
+        canPlaybackAudio: room.canPlaybackAudio,
+        microphonePublished: true,
+        trackReadyState: microphoneTrack.mediaStreamTrack.readyState,
+        speakerEnabled: speakerOnRef.current,
+      }, 'media.activation.succeeded');
     } catch (error) {
       const message = error instanceof Error ? error.message : '無法開啟聲音或麥克風';
+      emitTelemetry('media.activation.failed', {
+        canPlaybackAudio: room.canPlaybackAudio,
+        microphonePublished: Boolean(room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track),
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+        errorMessage: message,
+      });
       setMicError(message);
       setPlaybackError(message);
       setMediaActivationRequired(true);
     }
-  }, [attachVolumeAnalyser]);
+  }, [attachVolumeAnalyser, emitTelemetry, playRemoteElement]);
 
   const hangUp = useCallback(() => {
     void roomRef.current?.disconnect();
