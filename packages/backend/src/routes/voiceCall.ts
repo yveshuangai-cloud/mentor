@@ -214,7 +214,7 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
           token: await accessToken.toJwt(),
           url: config.livekitUrl,
           roomName,
-          telemetryToken: issueVoiceToken(identity.lineUserId, sessionId),
+          telemetryToken: issueVoiceToken(identity.lineUserId, sessionId, 30 * 60),
         }
       }
       return {
@@ -222,7 +222,7 @@ export async function voiceCallRoutes(app: FastifyInstance): Promise<void> {
         sessionId,
         token: issueVoiceToken(identity.lineUserId, sessionId),
         websocketPath: '/api/voice-call/ws',
-        telemetryToken: issueVoiceToken(identity.lineUserId, sessionId),
+        telemetryToken: issueVoiceToken(identity.lineUserId, sessionId, 30 * 60),
       }
     } catch (error) {
       request.log.warn({ err: error }, 'LIFF voice session authorization failed')
