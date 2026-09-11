@@ -32,6 +32,11 @@ async function bootstrap(): Promise<void> {
     decorateReply: false,
   })
   await app.register(fastifyStatic, {
+    root: join(dirname(fileURLToPath(import.meta.url)), '../../../assets/ai-personality/scenes'),
+    prefix: '/aieq/scenes/',
+    decorateReply: false,
+  })
+  await app.register(fastifyStatic, {
     root: join(dirname(fileURLToPath(import.meta.url)), '../../../output/design'),
     prefix: '/aieq/design/',
     decorateReply: false,

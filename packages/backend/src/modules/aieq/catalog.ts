@@ -4,6 +4,7 @@ export interface AieqAnimal {
   name: string
   title: string
   imagePath: string
+  resultScenePath: string
   shareCardPath: string
   strength: string
   blindSpot: string
@@ -50,6 +51,7 @@ export const AIEQ_ANIMALS: Record<string, AieqAnimal> = Object.fromEntries(
     name,
     title: titles[code],
     imagePath: `/aieq/assets/animals/swiss-modernist/${code.toLowerCase()}-${slug}.png`,
+    resultScenePath: `/aieq/scenes/results/${code.toLowerCase()}-${slug}-v1.png`,
     shareCardPath: `/aieq/design/ai-personality-share-cards-16/${shareCardFiles[code]}`,
     strength,
     blindSpot,
@@ -64,6 +66,7 @@ export function animalForCode(code: string): AieqAnimal {
     name: '探索者',
     title: '證據蒐集中',
     imagePath: '/aieq/assets/animals/swiss-modernist/aieq-16-contact-sheet.png',
+    resultScenePath: '/aieq/scenes/start/start-exploration-v1.png',
     shareCardPath: '/aieq/design/ai-personality-share-cards-16/_contact-sheet.png',
     strength: '仍在蒐集跨情境證據',
     blindSpot: '目前證據不足，不宜過早定型',
