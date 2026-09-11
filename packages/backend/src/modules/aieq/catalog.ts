@@ -2,7 +2,9 @@ export interface AieqAnimal {
   code: string
   slug: string
   name: string
+  title: string
   imagePath: string
+  shareCardPath: string
   strength: string
   blindSpot: string
   growthRoute: string
@@ -27,12 +29,28 @@ const entries: Array<[string, string, string, string, string, string]> = [
   ['ENTJ', 'orca', '虎鯨', '整合人才、技術與目標前進', '可能過度壓縮探索和調適時間', '在決策前保留反證與回饋窗口'],
 ]
 
+const titles: Record<string, string> = {
+  ISTJ: '系統築巢者', ISFJ: '溫柔守序者', INFJ: '長線洞察者', INTJ: '策略建築師',
+  ISTP: '工具拆解者', ISFP: '體驗守護者', INFP: '價值守望者', INTP: '模型探索者',
+  ESTP: '即時行動者', ESFP: '體驗帶動者', ENFP: '機會連結者', ENTP: '創意破框者',
+  ESTJ: '落地推進者', ESFJ: '協作織網者', ENFJ: '轉型引導者', ENTJ: '目標整合者',
+}
+
+const shareCardFiles: Record<string, string> = {
+  ISTJ: '01-istj-beaver.png', ISFJ: '02-isfj-penguin.png', INFJ: '03-infj-elephant.png', INTJ: '04-intj-owl.png',
+  ISTP: '05-istp-cat.png', ISFP: '06-isfp-red-panda.png', INFP: '07-infp-deer.png', INTP: '08-intp-octopus.png',
+  ESTP: '09-estp-cheetah.png', ESFP: '10-esfp-parrot.png', ENFP: '11-enfp-otter.png', ENTP: '12-entp-crow.png',
+  ESTJ: '13-estj-sheepdog.png', ESFJ: '14-esfj-bee.png', ENFJ: '15-enfj-dolphin.png', ENTJ: '16-entj-orca.png',
+}
+
 export const AIEQ_ANIMALS: Record<string, AieqAnimal> = Object.fromEntries(
   entries.map(([code, slug, name, strength, blindSpot, growthRoute]) => [code, {
     code,
     slug,
     name,
+    title: titles[code],
     imagePath: `/aieq/assets/animals/swiss-modernist/${code.toLowerCase()}-${slug}.png`,
+    shareCardPath: `/aieq/design/ai-personality-share-cards-16/${shareCardFiles[code]}`,
     strength,
     blindSpot,
     growthRoute,
@@ -44,7 +62,9 @@ export function animalForCode(code: string): AieqAnimal {
     code,
     slug: 'explorer',
     name: '探索者',
+    title: '證據蒐集中',
     imagePath: '/aieq/assets/animals/swiss-modernist/aieq-16-contact-sheet.png',
+    shareCardPath: '/aieq/design/ai-personality-share-cards-16/_contact-sheet.png',
     strength: '仍在蒐集跨情境證據',
     blindSpot: '目前證據不足，不宜過早定型',
     growthRoute: '補充情境後再確認結果',

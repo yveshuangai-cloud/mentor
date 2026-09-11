@@ -88,12 +88,21 @@ function mbtiResult(
 ): MbtiPreferenceResult {
   const base = dimensionScore(dimension, session, questions)
   const poles = MBTI_POLES[dimension]
+  const signedScore = questions.reduce((total, question) => {
+    const answer = session.answers[question.id]
+    const selected = answer?.optionId
+      ? question.options.find((option) => option.id === answer.optionId)
+      : undefined
+    return total + (selected?.evidence[dimension] ?? 0) * (answer?.interpretationConfidence ?? 0)
+  }, 0)
+  const clarity = round(clamp(Math.abs(signedScore) / Math.max(availableWeight(dimension, questions), 1), 0, 1))
   return {
     ...base,
     dimension,
     ...poles,
+    confidence: clarity,
     preference: base.evidenceCount === 0 ? 'X' : base.balance >= 0 ? poles.right : poles.left,
-    strength: round(Math.abs(base.balance) * 100),
+    strength: round(clarity * 100),
   }
 }
 
@@ -112,7 +121,7 @@ export function scoreAssessment(
     ]),
   ) as Record<AieqDimension, AieqAbilityResult>
 
-  const allScores = [...Object.values(mbtiPreferences), ...Object.values(aieqAbilities)]
+  const allScores = Object.values(mbtiPreferences)
   const overallConfidence =
     allScores.length === 0
       ? 0
@@ -125,6 +134,6 @@ export function scoreAssessment(
     aieqAbilities,
     overallConfidence,
     disclaimer:
-      'AIEQ 是參考四組人格偏好的 AI 時代行為傾向測評，非心理診斷，也不是官方 MBTI® 測驗。',
+      'AI 人格誌是參考四組人格偏好的 AI 情境快篩，非心理診斷，也不是官方 MBTI® 測驗。',
   }
 }

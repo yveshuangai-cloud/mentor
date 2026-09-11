@@ -1,13 +1,6 @@
-import type { AieqDimension, AssessmentResult } from './types.js'
+import type { AssessmentResult, MbtiDimension } from './types.js'
 
-const ABILITY_LABELS: Record<AieqDimension, string> = {
-  ai_collaboration: 'AI 協作',
-  transition_speed: '轉型速度',
-  ambiguity_tolerance: '模糊容忍',
-  agency: '主動性',
-  verification: '驗證能力',
-  continuous_learning: '持續學習',
-}
+const AXIS_LABELS: Record<MbtiDimension, string> = { EI: 'E / I', SN: 'S / N', TF: 'T / F', JP: 'J / P' }
 
 export interface ResultReportPrototype {
   title: string
@@ -20,20 +13,20 @@ export interface ResultReportPrototype {
 }
 
 export function buildResultReport(result: AssessmentResult): ResultReportPrototype {
-  const ranked = Object.values(result.aieqAbilities).sort((a, b) => b.score - a.score)
+  const ranked = Object.values(result.mbtiPreferences).sort((a, b) => b.strength - a.strength)
   const strongestSignals = ranked.slice(0, 2).map(
-    (ability) => `${ABILITY_LABELS[ability.dimension]}：${Math.round(ability.score)} 分`,
+    (axis) => `${AXIS_LABELS[axis.dimension]}：${axis.preference}，清晰度 ${Math.round(axis.strength)}%`,
   )
-  const growthExperiments = ranked.slice(-2).map((ability) => {
-    const label = ABILITY_LABELS[ability.dimension]
-    return `未來兩週為「${label}」安排一次低風險實驗，事後記錄結果與下一次調整。`
+  const growthExperiments = ranked.slice(-2).map((axis) => {
+    const label = AXIS_LABELS[axis.dimension]
+    return `${label} 接近邊界時，保留「目前傾向」的說法，並從日常行為繼續觀察。`
   })
 
   const confidencePercent = Math.round(result.overallConfidence * 100)
   return {
-    title: `你的 AI 時代行為傾向：${result.preferenceCode}`,
-    summary: '這份結果描述你目前在工作情境中的偏好與可練習能力，不代表能力高低或固定命運。',
-    preferenceNote: `四組人格偏好代碼為 ${result.preferenceCode}；它與六項 AIEQ 能力分開計算。`,
+    title: `你的 AI 人格誌：${result.preferenceCode}`,
+    summary: '這份結果描述你目前使用 AI 的偏好，不代表能力高低或固定命運。',
+    preferenceNote: `四組人格偏好代碼為 ${result.preferenceCode}；各軸需分開閱讀清晰度。`,
     strongestSignals,
     growthExperiments,
     confidenceNote: `本次結果信心程度約 ${confidencePercent}%。題數、跳題或跨情境不一致都會影響信心。`,

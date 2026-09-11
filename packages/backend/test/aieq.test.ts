@@ -38,12 +38,12 @@ function cardAnswer(
   }
 }
 
-function runAnswers(optionId: 'a' | 'b' | 'c'): AieqSession {
-  let session = createAieqSession(`session-${optionId}`, NOW)
+function runAnswers(optionIndex: 0 | 1 | 2): AieqSession {
+  let session = createAieqSession(`session-${optionIndex}`, NOW)
   for (const [index, question] of AIEQ_QUESTIONS.entries()) {
     const result = transitionAieqSession(
       session,
-      cardAnswer(session.id, `event-${optionId}-${index}`, question.id, optionId),
+      cardAnswer(session.id, `event-${optionIndex}-${index}`, question.id, question.options[optionIndex].id),
       AIEQ_QUESTIONS,
     )
     expect(result.accepted).toBe(true)
@@ -53,13 +53,13 @@ function runAnswers(optionId: 'a' | 'b' | 'c'): AieqSession {
 }
 
 describe('AIEQ answer state machine', () => {
-  it('uses eight core scenarios for a two-minute assessment', () => {
-    expect(AIEQ_QUESTIONS).toHaveLength(8)
+  it('uses the approved seven scenarios for a 60-second assessment', () => {
+    expect(AIEQ_QUESTIONS).toHaveLength(7)
   })
 
   it('uses eventId as an idempotency key for duplicate LINE postbacks', () => {
     const session = createAieqSession('session-1', NOW)
-    const event = cardAnswer('session-1', 'line-event-1', AIEQ_QUESTIONS[0].id, 'a')
+    const event = cardAnswer('session-1', 'line-event-1', AIEQ_QUESTIONS[0].id, AIEQ_QUESTIONS[0].options[0].id)
 
     const first = transitionAieqSession(session, event, AIEQ_QUESTIONS)
     const duplicate = transitionAieqSession(first.session, event, AIEQ_QUESTIONS)
@@ -78,19 +78,19 @@ describe('AIEQ answer state machine', () => {
 
     const card = transitionAieqSession(
       cardSession,
-      cardAnswer(cardSession.id, 'card-1', question.id, 'a'),
+      cardAnswer(cardSession.id, 'card-1', question.id, question.options[0].id),
       AIEQ_QUESTIONS,
     ).session
     const textEvent = freeTextToAnswerEvent({
       eventId: 'text-1',
       sessionId: textSession.id,
       question,
-      rawText: '我會先做小實驗，再看看結果。',
+      rawText: '我很期待去嘗試。',
       occurredAt: NOW,
     })
     const text = transitionAieqSession(textSession, textEvent, AIEQ_QUESTIONS).session
 
-    expect(textEvent.optionId).toBe('a')
+    expect(textEvent.optionId).toBe('try')
     expect(text.answers[question.id].optionId).toBe(card.answers[question.id].optionId)
     expect(Math.sign(scoreAssessment(text).mbtiPreferences.SN.balance)).toBe(
       Math.sign(scoreAssessment(card).mbtiPreferences.SN.balance),
@@ -139,7 +139,7 @@ describe('AIEQ answer state machine', () => {
     ).session
     const whilePaused = transitionAieqSession(
       session,
-      cardAnswer(session.id, 'blocked-answer', AIEQ_QUESTIONS[1].id, 'b'),
+      cardAnswer(session.id, 'blocked-answer', AIEQ_QUESTIONS[1].id, AIEQ_QUESTIONS[1].options[1].id),
       AIEQ_QUESTIONS,
     )
     expect(whilePaused.accepted).toBe(false)
@@ -182,7 +182,7 @@ describe('AIEQ answer state machine', () => {
   })
 
   it('marks a session complete only after the final question', () => {
-    const session = runAnswers('b')
+    const session = runAnswers(1)
     expect(session.status).toBe('completed')
     expect(session.currentQuestionIndex).toBe(AIEQ_QUESTIONS.length)
     expect(session.completedAt).toBe(NOW)
@@ -190,25 +190,30 @@ describe('AIEQ answer state machine', () => {
 })
 
 describe('AIEQ scoring boundaries', () => {
-  it('has repeated, differently keyed evidence for every dimension', () => {
-    const dimensions = ['EI', 'SN', 'TF', 'JP'] as const
-    for (const dimension of dimensions) {
-      const questions = AIEQ_QUESTIONS.filter((question) => question.dimensions.includes(dimension))
-      expect(questions.length).toBeGreaterThanOrEqual(2)
-      expect(new Set(questions.map((question) => question.validation)).size).toBeGreaterThanOrEqual(2)
-    }
+  it('matches the approved axis coverage and records the new instrument version', () => {
+    expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('EI'))).toHaveLength(2)
+    expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('SN'))).toHaveLength(2)
+    expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('TF'))).toHaveLength(2)
+    expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('JP'))).toHaveLength(1)
+    expect(createAieqSession('version-check', NOW).instrumentVersion).toBe('ai-personality-1.0-7q')
+  })
 
-    const abilityDimensions = [
-      'ai_collaboration',
-      'transition_speed',
-      'ambiguity_tolerance',
-      'agency',
-      'verification',
-      'continuous_learning',
-    ] as const
-    for (const dimension of abilityDimensions) {
-      expect(AIEQ_QUESTIONS.filter((question) => question.dimensions.includes(dimension)).length).toBeGreaterThanOrEqual(3)
-    }
+  it('reproduces the meeting ENTP example with PPT clarity formula', () => {
+    const optionIds = ['try', 'angle', 'story', 'retry', 'usable', 'wait', 'spontaneous']
+    let session = createAieqSession('meeting-example', NOW)
+    AIEQ_QUESTIONS.forEach((question, index) => {
+      session = transitionAieqSession(
+        session,
+        cardAnswer(session.id, `meeting-${index}`, question.id, optionIds[index]),
+        AIEQ_QUESTIONS,
+      ).session
+    })
+    const result = scoreAssessment(session)
+    expect(result.preferenceCode).toBe('ENTP')
+    expect(result.mbtiPreferences.EI.strength).toBe(25)
+    expect(result.mbtiPreferences.SN.strength).toBe(100)
+    expect(result.mbtiPreferences.TF.strength).toBe(70)
+    expect(result.mbtiPreferences.JP.strength).toBe(100)
   })
 
   it('does not derive AI capability from an MBTI preference', () => {
@@ -245,11 +250,11 @@ describe('AIEQ scoring boundaries', () => {
   })
 
   it('reports confidence and lowers it when evidence is missing', () => {
-    const complete = scoreAssessment(runAnswers('b'))
+    const complete = scoreAssessment(runAnswers(1))
     let partialSession = createAieqSession('partial', NOW)
     partialSession = transitionAieqSession(
       partialSession,
-      cardAnswer(partialSession.id, 'partial-1', AIEQ_QUESTIONS[0].id, 'b'),
+      cardAnswer(partialSession.id, 'partial-1', AIEQ_QUESTIONS[0].id, AIEQ_QUESTIONS[0].options[1].id),
       AIEQ_QUESTIONS,
     ).session
     const partial = scoreAssessment(partialSession)
@@ -282,11 +287,11 @@ describe('AIEQ presentation prototypes', () => {
 
     expect(scoredButtons).toHaveLength(3)
     expect(scoredButtons[0].action?.data).toContain('session_id=demo-session')
-    expect(scoredButtons[0].action?.data).toContain('question_id=q01_new_tool')
+    expect(scoredButtons[0].action?.data).toContain('question_id=q01_ai_trend')
   })
 
   it('builds a neutral report with confidence and no visual hierarchy', () => {
-    const report = buildResultReport(scoreAssessment(runAnswers('a')))
+    const report = buildResultReport(scoreAssessment(runAnswers(0)))
 
     expect(report.strongestSignals).toHaveLength(2)
     expect(report.growthExperiments).toHaveLength(2)
@@ -296,7 +301,7 @@ describe('AIEQ presentation prototypes', () => {
   })
 
   it('builds a LINE result card that opens the LIFF confirmation layer', () => {
-    const result = scoreAssessment(runAnswers('a'))
+    const result = scoreAssessment(runAnswers(0))
     const flex = buildResultFlex(result, 'https://example.test')
     const serialized = JSON.stringify(flex)
     expect(serialized).toContain('https://example.test/aieq')

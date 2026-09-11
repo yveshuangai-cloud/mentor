@@ -31,6 +31,11 @@ async function bootstrap(): Promise<void> {
     prefix: '/aieq/assets/',
     decorateReply: false,
   })
+  await app.register(fastifyStatic, {
+    root: join(dirname(fileURLToPath(import.meta.url)), '../../../output/design'),
+    prefix: '/aieq/design/',
+    decorateReply: false,
+  })
   await app.register(webhookRoutes, { prefix: '/api/webhook' })
   await app.register(aieqRoutes, { prefix: '/api/aieq' })
   await app.register(adminRoutes, { prefix: '/api/admin' })

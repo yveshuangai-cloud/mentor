@@ -52,7 +52,10 @@ function present(session: Awaited<ReturnType<typeof findOrCreateSession>>) {
 }
 
 export async function aieqRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/config', async () => ({ liffId: config.liffId }))
+  app.get('/config', async () => ({
+    liffId: config.liffId,
+    demoMode: config.nodeEnv !== 'production' && config.aieqDemoMode,
+  }))
 
   app.get('/entry', async (req, reply) => {
     try {

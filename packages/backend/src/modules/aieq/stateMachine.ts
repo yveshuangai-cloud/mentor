@@ -10,7 +10,7 @@ export interface TransitionResult {
 export function createAieqSession(id: string, now = new Date().toISOString()): AieqSession {
   return {
     id,
-    instrumentVersion: 'aieq-pilot-0.1',
+    instrumentVersion: 'ai-personality-1.0-7q',
     status: 'in_progress',
     currentQuestionIndex: 0,
     answers: {},

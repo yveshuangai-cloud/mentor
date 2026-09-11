@@ -15,6 +15,7 @@ RUN npm ci --workspace packages/backend --include-workspace-root=false
 
 COPY packages/backend packages/backend
 COPY assets/aieq assets/aieq
+COPY output/design output/design
 COPY soul soul
 
 RUN npm run soul:lint -w packages/backend \
