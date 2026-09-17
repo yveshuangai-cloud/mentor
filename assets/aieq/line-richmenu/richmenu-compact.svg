@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1200" width="1200" height="1200">
+  <!-- LINE rich menu, compact size 1200x405. Drawn in the middle band of a square canvas (y 397.5-802.5) and cropped after rasterising. The whole banner is one tap area. -->
+  <rect width="1200" height="1200" fill="#050505"/>
+  <g transform="translate(0,397.5)">
+    <g stroke="#ffffff" stroke-opacity=".05" stroke-width="2"><path d="M0 135H1200M0 270H1200M300 0V405M600 0V405M900 0V405"/></g>
+    <rect x="70" y="78" width="54" height="10" fill="#41ff78"/>
+    <text x="70" y="132" font-family="Menlo,'SF Mono',monospace" font-weight="700" font-size="30" letter-spacing="5" fill="#41ff78">8 SCENARIOS / ABOUT 1 MIN</text>
+    <text x="66" y="238" font-family="'PingFang TC','Noto Sans TC','Heiti TC',sans-serif" font-weight="800" font-size="86" letter-spacing="-2" fill="#f5f4f0">你是哪一種</text>
+    <text x="66" y="340" font-family="'PingFang TC','Noto Sans TC','Heiti TC',sans-serif" font-weight="800" font-size="86" letter-spacing="-2" fill="#ff1785">AI 人格？</text>
+    <rect x="760" y="142" width="370" height="122" fill="#ff1785"/>
+    <text x="945" y="223" text-anchor="middle" font-family="'PingFang TC','Noto Sans TC','Heiti TC',sans-serif" font-weight="800" font-size="50" letter-spacing="3" fill="#050505">開始探索 →</text>
+    <text x="945" y="312" text-anchor="middle" font-family="'PingFang TC','Noto Sans TC','Heiti TC',sans-serif" font-weight="600" font-size="27" fill="#9b9b9b">AI 人格誌｜非心理診斷</text>
+  </g>
+</svg>
