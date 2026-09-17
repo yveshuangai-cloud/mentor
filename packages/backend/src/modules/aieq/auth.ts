@@ -20,14 +20,21 @@ const cache = new Map<string, { identity: AieqIdentity; expiresAt: number }>()
 export async function verifyLiffIdToken(idToken: string): Promise<AieqIdentity> {
   // Local-only escape hatch for hands-on demos. Production remains fail-closed
   // even if AIEQ_DEMO_MODE is accidentally present in its environment.
-  if (config.nodeEnv !== 'production' && config.aieqDemoMode && idToken === 'local-demo') {
+  // "local-demo:<device id>" gives every browser its own demo player, so several phones
+  // on the same LAN demo no longer overwrite each other's progress.
+  const demo = config.nodeEnv !== 'production' && config.aieqDemoMode
+    ? /^local-demo(?::([A-Za-z0-9-]{8,40}))?$/.exec(idToken)
+    : null
+  if (demo) {
+    const lineUserId = demo[1] ? `LOCAL-AIEQ-DEMO-${demo[1]}` : 'LOCAL-AIEQ-DEMO'
     const result = await platformQuery<{ id: number }>(
       `INSERT INTO users (line_user_id,display_name)
-       VALUES ('LOCAL-AIEQ-DEMO','本機展示者')
+       VALUES ($1,'本機展示者')
        ON CONFLICT (line_user_id) DO UPDATE SET updated_at=now()
        RETURNING id`,
+      [lineUserId],
     )
-    return { userId: result.rows[0].id, lineUserId: 'LOCAL-AIEQ-DEMO', displayName: '本機展示者' }
+    return { userId: result.rows[0].id, lineUserId, displayName: '本機展示者' }
   }
   if (config.lineLoginChannelId === 'not-configured') throw new Error('line_login_not_configured')
   const cached = cache.get(idToken)
