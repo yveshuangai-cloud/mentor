@@ -6,6 +6,8 @@
 工作分支：`codex/aieq-mbti`  
 目前 HEAD：`493e27b feat: add local demo sharing and friend branch`
 
+> **2026-09-18 更新**：題庫已升級為 AI Personality 1.1，共 **8 題**（新增第 8 題 `q08_ai_options`，J／P 第二個證據點）。本文凡寫「7 題」「J／P 只有一題」之處皆為交接當下的狀態，現況見 `WORK-PLAN-2026-09-17.md`。
+>
 > 請先讀完本文件再修改。此分支目前有尚未提交的 UI、題目文案、PWA 與結果頁變更；不要 reset、checkout 或覆蓋。
 
 ## 1. 一句話現況

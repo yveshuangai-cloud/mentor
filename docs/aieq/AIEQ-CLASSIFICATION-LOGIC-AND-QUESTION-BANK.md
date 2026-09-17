@@ -1,6 +1,6 @@
 # AIEQ 16 型分類邏輯、八題題庫與因果圖設計元件
 
-> **歷史文件（2026-09-17 標註）**：本文描述的是 8 題／Pilot 時期的設計，保留作為決策背景。正式遊戲現為 **7 題**的 AI Personality｜AI 人格誌。現況以 `docs/aieq/CLAUDE-CODE-HANDOFF-2026-09-17.md`、`docs/aieq/WORK-PLAN-2026-09-17.md` 與 `packages/backend/src/modules/aieq/questions.ts`（含測試）為準。 計分原理仍可參考，題目與權重不可再引用本文。
+> **歷史文件（2026-09-17 標註）**：本文描述的是 Pilot 時期的舊 8 題設計（題目、維度與計分都不同），保留作為決策背景。正式遊戲是 AI Personality｜AI 人格誌 1.1，共 **8 題**，與本文的 8 題無關。現況以 `docs/aieq/CLAUDE-CODE-HANDOFF-2026-09-17.md`、`docs/aieq/WORK-PLAN-2026-09-17.md` 與 `packages/backend/src/modules/aieq/questions.ts`（含測試）為準。 計分原理仍可參考，題目與權重不可再引用本文。
 
 > Google Docs 雲端鏡像：https://docs.google.com/document/d/1M83NFOm4K_sDfdAokmDFMeyZ7wRX93Q83K_wbVQytFo/edit
 > 本檔供 GitHub 版本控管；題庫與計分現況仍以指定 instrumentVersion 的程式碼與自動測試為準。

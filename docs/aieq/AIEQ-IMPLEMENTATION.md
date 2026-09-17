@@ -1,6 +1,6 @@
 # AIEQ 端到端實作與爬山開發紀錄
 
-> **歷史文件（2026-09-17 標註）**：本文描述的是 8 題／Pilot 時期的設計，保留作為決策背景。正式遊戲現為 **7 題**的 AI Personality｜AI 人格誌。現況以 `docs/aieq/CLAUDE-CODE-HANDOFF-2026-09-17.md`、`docs/aieq/WORK-PLAN-2026-09-17.md` 與 `packages/backend/src/modules/aieq/questions.ts`（含測試）為準。
+> **歷史文件（2026-09-17 標註）**：本文描述的是 Pilot 時期的舊 8 題設計（題目、維度與計分都不同），保留作為決策背景。正式遊戲是 AI Personality｜AI 人格誌 1.1，共 **8 題**，與本文的 8 題無關。現況以 `docs/aieq/CLAUDE-CODE-HANDOFF-2026-09-17.md`、`docs/aieq/WORK-PLAN-2026-09-17.md` 與 `packages/backend/src/modules/aieq/questions.ts`（含測試）為準。
 
 狀態：分支功能完成，尚未設定 LINE Console、尚未部署正式環境。
 分支：`codex/aieq-mbti`
