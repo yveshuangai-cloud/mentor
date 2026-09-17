@@ -1,0 +1,7 @@
+# Railway CLI uploads this directory when running `railway up`.
+# Keep everything the Dockerfile copies (packages, assets/aieq, assets/ai-personality, output/design, soul).
+# Leave out planning documents and office files: they are large and never used at runtime.
+/docs/
+/output/documents/
+/output/pdf/
+/output/*.pptx
