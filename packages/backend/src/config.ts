@@ -28,6 +28,8 @@ const configSchema = z.object({
   lineChannelSecret: blankAsUndefined(z.string().default('not-configured')),
   lineLoginChannelId: blankAsUndefined(z.string().default('not-configured')),
   liffId: blankAsUndefined(z.string().default('not-configured')),
+  // Basic or premium ID of the LINE Official Account players are invited to add after seeing their result, e.g. "@740bicby". Empty hides the prompt.
+  lineOaBasicId: blankAsUndefined(z.string().regex(/^@[A-Za-z0-9._-]{3,30}$/).or(z.literal('')).default('')),
   aieqDemoMode: envBoolean(false),
   // 精確 LINE User ID 白名單；只從 Secret Manager 注入，不進程式庫。
   soulAuthorizedLineUserIds: blankAsUndefined(z.string().default('')),
@@ -84,6 +86,7 @@ const rawConfig = {
   lineChannelSecret: process.env.LINE_CHANNEL_SECRET,
   lineLoginChannelId: process.env.LINE_LOGIN_CHANNEL_ID,
   liffId: process.env.LIFF_ID,
+  lineOaBasicId: process.env.LINE_OA_BASIC_ID,
   aieqDemoMode: process.env.AIEQ_DEMO_MODE,
   soulAuthorizedLineUserIds: process.env.SOUL_AUTHORIZED_LINE_USER_IDS,
   anthropicApiKey: process.env.ANTHROPIC_API_KEY,

@@ -17,6 +17,7 @@ import {
   getSession,
   listFriends,
 } from '../modules/aieq/repository.js'
+import { buildShareInviteFlex } from '../modules/aieq/flex.js'
 import { buildResultReport } from '../modules/aieq/report.js'
 import { scoreAssessment } from '../modules/aieq/scoring.js'
 
@@ -54,6 +55,7 @@ function present(session: Awaited<ReturnType<typeof findOrCreateSession>>) {
 export async function aieqRoutes(app: FastifyInstance): Promise<void> {
   app.get('/config', async () => ({
     liffId: config.liffId,
+    oaBasicId: config.lineOaBasicId,
     demoMode: config.nodeEnv !== 'production' && config.aieqDemoMode,
   }))
 
@@ -176,7 +178,19 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
       const entry = config.liffId === 'not-configured'
         ? `${config.publicBaseUrl}/aieq`
         : `https://liff.line.me/${config.liffId}`
-      return { ...invite, url: `${entry}?invite=${invite.token}` }
+      const url = `${entry}?invite=${invite.token}`
+      const profile = await getProfile(who.userId)
+      // LINE only renders Flex images served over HTTPS, so local HTTP demos keep the plain-text share.
+      const shareMessage = profile && config.publicBaseUrl.startsWith('https://')
+        ? buildShareInviteFlex({
+          typeCode: String(profile.type_code),
+          displayName: who.displayName,
+          pictureUrl: who.pictureUrl,
+          inviteUrl: url,
+          publicBaseUrl: config.publicBaseUrl,
+        })
+        : null
+      return { ...invite, url, shareMessage }
     } catch (error) {
       return reply.code(401).send({ error: (error as Error).message })
     }
