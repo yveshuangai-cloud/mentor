@@ -1,5 +1,7 @@
 # AIEQ 動物人格視覺系統
 
+> **歷史文件（2026-09-17 標註）**：此視覺方向（白底／純幾何稿）已被後續的黑底、螢光粉紅與螢光綠場景方向取代，請勿用本文素材覆蓋現行場景圖。現行視覺請讀 `AIEQ-GEOMETRIC-ANIMAL-VISUAL-SYSTEM.md`、`AIEQ-ART-DIRECTION-CANDIDATES.md` 與交接文件第 3.3 節。
+
 系統版本：`AIEQ-VISUAL-v1`
 用途：LINE Flex 結果卡、LIFF 16 型圖鑑、好友頭像、分享卡
 狀態：**已由 `AIEQ-GEOMETRIC-ANIMAL-v3` 取代，僅保留為早期具象插畫探索紀錄。** 目前正式方向請見 `AIEQ-GEOMETRIC-ANIMAL-VISUAL-SYSTEM.md`。

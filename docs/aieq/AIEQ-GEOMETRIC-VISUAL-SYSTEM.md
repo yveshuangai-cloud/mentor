@@ -1,5 +1,7 @@
 # AIEQ 抽象幾何人格視覺系統
 
+> **歷史文件（2026-09-17 標註）**：此視覺方向（白底／純幾何稿）已被後續的黑底、螢光粉紅與螢光綠場景方向取代，請勿用本文素材覆蓋現行場景圖。現行視覺請讀 `AIEQ-GEOMETRIC-ANIMAL-VISUAL-SYSTEM.md`、`AIEQ-ART-DIRECTION-CANDIDATES.md` 與交接文件第 3.3 節。
+
 系統版本：`AIEQ-GEOMETRIC-v2`
 狀態：**已由 `AIEQ-GEOMETRIC-ANIMAL-v3` 取代。** 此版誤將動物完全抽離，僅保留為幾何語法探索。
 參考圖角色：只作版面密度與 4 × 4 類型總覽參考，不直接複製其配色或文字內容

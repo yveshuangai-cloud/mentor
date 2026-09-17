@@ -1,5 +1,7 @@
 # AIEQ 專案說明書
 
+> **歷史文件（2026-09-17 標註）**：本文描述的是 8 題／Pilot 時期的設計，保留作為決策背景。正式遊戲現為 **7 題**的 AI Personality｜AI 人格誌。現況以 `docs/aieq/CLAUDE-CODE-HANDOFF-2026-09-17.md`、`docs/aieq/WORK-PLAN-2026-09-17.md` 與 `packages/backend/src/modules/aieq/questions.ts`（含測試）為準。
+
 文件版本：`1.1`
 產品階段：可測試原型（尚未正式部署）
 整理日期：2026-08-24
