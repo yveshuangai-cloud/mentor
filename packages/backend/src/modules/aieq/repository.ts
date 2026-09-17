@@ -93,8 +93,9 @@ export async function findOrCreateSession(userId: number, tenantId?: number): Pr
     )
     if (canonical.rows[0]) return (await loadWith(client, canonical.rows[0].session_id, userId))!
 
+    // completed_unconfirmed counts as current: reopening must show that result, never start another session.
     const existing = await client.query<{ id: string }>(
-      `SELECT id FROM aieq_sessions WHERE user_id = $1 AND status IN ('in_progress','paused')
+      `SELECT id FROM aieq_sessions WHERE user_id = $1 AND status IN ('in_progress','paused','completed')
        ORDER BY updated_at DESC LIMIT 1 FOR UPDATE`,
       [userId],
     )
@@ -127,6 +128,17 @@ export async function getConfirmedProfileSession(userId: number): Promise<AieqSe
     `SELECT session_id FROM aieq_profiles WHERE user_id=$1`, [userId],
   )
   return result.rows[0] ? getSession(userId, result.rows[0].session_id) : null
+}
+
+/** Latest session a returning user should land on: still answering, or completed but not yet confirmed. */
+export async function findCurrentSession(userId: number): Promise<AieqSession | null> {
+  return withTransaction(async (client) => {
+    const result = await client.query<{ id: string }>(
+      `SELECT id FROM aieq_sessions WHERE user_id=$1 AND status IN ('in_progress','paused','completed')
+       ORDER BY updated_at DESC LIMIT 1`, [userId],
+    )
+    return result.rows[0] ? loadWith(client, result.rows[0].id, userId) : null
+  })
 }
 
 export async function findActiveSession(userId: number): Promise<AieqSession | null> {

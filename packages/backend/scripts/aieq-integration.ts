@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { createServer } from 'node:net'
 import EmbeddedPostgres from 'embedded-postgres'
 
@@ -18,7 +19,7 @@ async function availablePort(): Promise<number> {
 
 const port = await availablePort()
 const postgres = new EmbeddedPostgres({
-  databaseDir: join('C:\\tmp', `aieq-pg-${randomUUID()}`),
+  databaseDir: join(tmpdir(), `aieq-pg-${randomUUID()}`),
   port,
   user: 'postgres',
   password: 'aieq-test-password',
@@ -28,6 +29,8 @@ const postgres = new EmbeddedPostgres({
   onError: (error) => console.error(error),
 })
 
+let closePool: (() => Promise<void>) | undefined
+
 try {
   await postgres.initialise()
   await postgres.start()
@@ -35,6 +38,7 @@ try {
   process.env.NODE_ENV = 'test'
 
   const { autoMigrate, platformQuery, pool } = await import('../src/db/index.js')
+  closePool = () => pool.end()
   const { AIEQ_QUESTIONS } = await import('../src/modules/aieq/questions.js')
   const {
     appendEvent,
@@ -42,6 +46,7 @@ try {
     confirmProfile,
     createFriendInvite,
     deleteAieqData,
+    findCurrentSession,
     findOrCreateSession,
     getProfile,
     listFriends,
@@ -65,7 +70,7 @@ try {
       source: 'card' as const,
       kind: 'answer' as const,
       questionId: question.id,
-      optionId: index % 2 === 0 ? 'a' : 'b',
+      optionId: question.options[index % 2 === 0 ? 0 : 1].id,
       occurredAt: new Date(Date.now() + index).toISOString(),
       interpretationConfidence: 1,
     }
@@ -75,6 +80,16 @@ try {
     session = applied.session
   }
   assert.equal(session.status, 'completed')
+  assert.equal(
+    (await findCurrentSession(user.rows[0].id))?.id,
+    session.id,
+    'a completed but unconfirmed result must still be shown when the user comes back',
+  )
+  assert.equal(
+    (await findOrCreateSession(user.rows[0].id)).id,
+    session.id,
+    'a completed but unconfirmed session must not be replaced by a new session',
+  )
 
   await confirmProfile(user.rows[0].id, session.id, {
     visibleToFriends: true,
@@ -99,7 +114,7 @@ try {
       source: 'card',
       kind: 'answer',
       questionId: question.id,
-      optionId: index % 2 === 0 ? 'b' : 'c',
+      optionId: question.options[index % 2 === 0 ? 1 : 2].id,
       occurredAt: new Date(Date.now() + 100 + index).toISOString(),
       interpretationConfidence: 1,
     })).session
@@ -115,8 +130,9 @@ try {
   assert.equal(await getProfile(user.rows[0].id), null)
   assert.equal((await listFriends(friend.rows[0].id)).length, 0)
 
-  await pool.end()
   console.log('AIEQ integration: migration, idempotency, scoring, confirmation and friendship passed')
 } finally {
+  // Close pooled connections first; otherwise stopping Postgres masks the real failure.
+  await closePool?.().catch(() => {})
   await postgres.stop().catch(() => {})
 }

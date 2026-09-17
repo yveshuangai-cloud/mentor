@@ -10,7 +10,7 @@ import {
   confirmProfile,
   createFriendInvite,
   deleteAieqData,
-  findActiveSession,
+  findCurrentSession,
   findOrCreateSession,
   getConfirmedProfileSession,
   getProfile,
@@ -64,7 +64,7 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
       const confirmed = profile ? await getConfirmedProfileSession(who.userId) : null
       if (confirmed) return { mode: 'result', profile, ...present(confirmed) }
 
-      let active = await findActiveSession(who.userId)
+      let active = await findCurrentSession(who.userId)
       if (active?.status === 'paused') {
         active = (await appendEvent(who.userId, {
           eventId: `liff-resume:${active.id}:${Date.now()}`,
