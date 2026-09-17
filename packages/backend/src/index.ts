@@ -60,6 +60,16 @@ async function bootstrap(): Promise<void> {
     return reply.type('text/html; charset=utf-8').send(html)
   })
 
+  app.get('/aieq-manifest.webmanifest', async (_req, reply) => {
+    const manifest = await readFile(join(dirname(fileURLToPath(import.meta.url)), '../public/aieq-manifest.webmanifest'), 'utf8')
+    return reply.type('application/manifest+json; charset=utf-8').send(manifest)
+  })
+
+  app.get('/aieq-sw.js', async (_req, reply) => {
+    const worker = await readFile(join(dirname(fileURLToPath(import.meta.url)), '../public/aieq-sw.js'), 'utf8')
+    return reply.header('service-worker-allowed', '/').type('application/javascript; charset=utf-8').send(worker)
+  })
+
   // 到期點數掃描：生產走 Cloud Scheduler 打這條（throttled Cloud Run 上 setInterval 必死）
   app.post('/api/cron/expire-sweep', async (req, reply) => {
     if (!config.cronSecret || req.headers['x-cron-secret'] !== config.cronSecret) {

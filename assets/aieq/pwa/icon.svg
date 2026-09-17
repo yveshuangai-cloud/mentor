@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- AI Personality｜AI 人格誌 app icon. Full-bleed black so it works as a maskable icon; all marks stay inside the central 80% safe zone. -->
+  <rect width="1024" height="1024" fill="#050505"/>
+  <g stroke="#ffffff" stroke-opacity=".05" stroke-width="2">
+    <path d="M0 256H1024M0 512H1024M0 768H1024M256 0V1024M512 0V1024M768 0V1024"/>
+  </g>
+  <rect x="232" y="246" width="64" height="12" fill="#41ff78"/>
+  <text x="228" y="560" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-weight="900" font-size="380" letter-spacing="-18" fill="#ff1785">AI</text>
+  <rect x="232" y="612" width="560" height="20" fill="#41ff78"/>
+  <text x="232" y="742" font-family="'PingFang TC','Noto Sans TC','Heiti TC',sans-serif" font-weight="800" font-size="104" letter-spacing="14" fill="#f5f4f0">人格誌</text>
+</svg>
