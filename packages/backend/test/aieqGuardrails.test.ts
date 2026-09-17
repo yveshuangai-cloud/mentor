@@ -24,6 +24,7 @@ describe('AI Personality scoring contract', () => {
       ['q05_ai_slides', ['TF'], [['usable', { TF: -0.5 }], ['warmth', { TF: 2 }], ['error', { TF: -2 }]]],
       ['q06_ai_learning', ['EI'], [['docs', { EI: 2.5 }], ['wait', { EI: -0.25 }], ['discuss', { EI: -2.5 }]]],
       ['q07_ai_habit', ['JP'], [['spontaneous', { JP: 2 }], ['forget', { JP: -0.5 }], ['template', { JP: -2 }]]],
+      ['q08_ai_options', ['JP'], [['pick', { JP: -3 }], ['more', { JP: 3 }], ['stash', { JP: -0.75 }]]],
     ])
   })
 

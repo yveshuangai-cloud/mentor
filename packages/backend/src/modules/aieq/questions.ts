@@ -4,7 +4,10 @@ function option(id: string, shortLabel: string, label: string, evidence: Partial
   return { id, shortLabel, label, evidence, aliases }
 }
 
-/** AI Personality 1.0, approved 2026-09-11. Button order never affects scoring. */
+/**
+ * AI Personality 1.1. Questions 1-7 approved 2026-09-11; question 8 added 2026-09-18 as the second J/P item.
+ * Button order never affects scoring.
+ */
 export const AIEQ_QUESTIONS: readonly AieqQuestion[] = [
   {
     id: 'q01_ai_trend', scenario: '暖身｜AI 趨勢', prompt: '對 AI 趨勢，你第一個反應是？',
@@ -60,6 +63,16 @@ export const AIEQ_QUESTIONS: readonly AieqQuestion[] = [
       option('spontaneous', '我想到什麼就直接問', '每次情況不同，我喜歡現場發揮、邊問邊調整。', { JP: 2 }, ['隨興發問']),
       option('forget', '我有存過範本，但常常沒用', '我知道範本放在哪裡，實際工作時卻常直接重問。', { JP: -0.5 }, ['常忘']),
       option('template', '我每次都會打開固定範本', '常用工作我照著同一套步驟做，不會從頭再問。', { JP: -2 }, ['固定模板']),
+    ],
+  },
+  {
+    // Second J/P item: closure vs keeping options open, a different facet from q07's working structure.
+    // Strong weights are 3, not q07's 2: equal magnitudes tie at 0 and every tie is read as P (see aieqBalance.test.ts).
+    id: 'q08_ai_options', scenario: '決定｜AI 選項', prompt: 'AI 一口氣給你三個都不錯的答案，你會？',
+    validation: 'cross_check', dimensions: ['JP'], options: [
+      option('pick', '我挑一個，收工！', '選定就往下走，剩下的我不會再回頭看。', { JP: -3 }, ['挑一個', '收工']),
+      option('more', '我說：「再來三個！」', '說不定下一批更好，我想多看看再決定。', { JP: 3 }, ['再來三個', '再來']),
+      option('stash', '我選一個，另外兩個偷存起來', '先有個決定，但留著備案我比較安心。', { JP: -0.75 }, ['偷存', '存起來', '備案']),
     ],
   },
 ]

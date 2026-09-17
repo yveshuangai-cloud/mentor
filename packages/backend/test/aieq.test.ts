@@ -53,8 +53,8 @@ function runAnswers(optionIndex: 0 | 1 | 2): AieqSession {
 }
 
 describe('AIEQ answer state machine', () => {
-  it('uses the approved seven scenarios for a 60-second assessment', () => {
-    expect(AIEQ_QUESTIONS).toHaveLength(7)
+  it('uses the approved eight scenarios for a roughly one-minute assessment', () => {
+    expect(AIEQ_QUESTIONS).toHaveLength(8)
   })
 
   it('uses eventId as an idempotency key for duplicate LINE postbacks', () => {
@@ -194,12 +194,14 @@ describe('AIEQ scoring boundaries', () => {
     expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('EI'))).toHaveLength(2)
     expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('SN'))).toHaveLength(2)
     expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('TF'))).toHaveLength(2)
-    expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('JP'))).toHaveLength(1)
-    expect(createAieqSession('version-check', NOW).instrumentVersion).toBe('ai-personality-1.0-7q')
+    expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('JP'))).toHaveLength(2)
+    expect(createAieqSession('version-check', NOW).instrumentVersion).toBe('ai-personality-1.1-8q')
   })
 
   it('reproduces the meeting ENTP example with PPT clarity formula', () => {
-    const optionIds = ['try', 'angle', 'story', 'retry', 'usable', 'wait', 'spontaneous']
+    // The first seven answers are the example from the 2026-09-11 meeting deck. Question 8 did not exist then;
+    // the example person is a clear P, so they get the P answer and J/P stays (2+3)/(2+3) = 100.
+    const optionIds = ['try', 'angle', 'story', 'retry', 'usable', 'wait', 'spontaneous', 'more']
     let session = createAieqSession('meeting-example', NOW)
     AIEQ_QUESTIONS.forEach((question, index) => {
       session = transitionAieqSession(
