@@ -9,6 +9,7 @@ import { config, warnMissingConfig } from './config.js'
 import { allow } from './modules/aieq/rateLimit.js'
 import { autoMigrate } from './db/index.js'
 import { processQueuedWebhookEvents, webhookRoutes } from './routes/webhook.js'
+import { aieqWebhookRoutes, processAieqWebhookEvents } from './routes/aieqWebhook.js'
 import { adminRoutes } from './routes/admin.js'
 import { paymentRoutes } from './routes/payments.js'
 import { mediaRoutes } from './routes/media.js'
@@ -80,7 +81,8 @@ async function bootstrap(): Promise<void> {
     prefix: '/aieq/design/',
     decorateReply: false,
   })
-  await app.register(webhookRoutes, { prefix: '/api/webhook' })
+  // An AI Personality-only account gets its own webhook at the same path; Mantou keeps the full one.
+  await app.register(config.aieqOnlyWebhook ? aieqWebhookRoutes : webhookRoutes, { prefix: '/api/webhook' })
   await app.register(aieqRoutes, { prefix: '/api/aieq' })
   await app.register(adminRoutes, { prefix: '/api/admin' })
   await app.register(paymentRoutes, { prefix: '/api/payments' })
@@ -183,7 +185,7 @@ async function bootstrap(): Promise<void> {
     if (!config.cronSecret || req.headers['x-cron-secret'] !== config.cronSecret) {
       return reply.code(401).send({ error: 'unauthorized' })
     }
-    const result = await processQueuedWebhookEvents(app, 50)
+    const result = config.aieqOnlyWebhook ? await processAieqWebhookEvents(app, 50) : await processQueuedWebhookEvents(app, 50)
     return { ok: true, ...result }
   })
 

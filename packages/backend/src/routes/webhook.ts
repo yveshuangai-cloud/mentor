@@ -1,4 +1,3 @@
-import { config } from '../config.js'
 import type { FastifyInstance } from 'fastify'
 import {
   verifyLineSignature,
@@ -148,8 +147,6 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
       app.log.warn({ err }, 'LINE loading animation failed'),
     )
   }
-  // AI Personality-only account: media and voice belong to Mantou, not to the quiz.
-  if (config.aieqOnlyWebhook && msgType !== 'text') return
   if (msgType === 'image' || msgType === 'file') return handleMediaEvent(app, event)
   if (msgType === 'audio') return handleAudioEvent(app, event)
   if (msgType !== 'text') return
@@ -159,23 +156,6 @@ async function handleEvent(app: FastifyInstance, event: LineEvent): Promise<void
 
   const profile = await getLineProfile(lineUserId)
   const user = await upsertUser(lineUserId, profile)
-
-  if (config.aieqOnlyWebhook) {
-    // No tenant, no genesis, no LLM: run the quiz commands, otherwise point at the LIFF.
-    const aieqMessages = await handleAieqText({
-      userId: user.id,
-      text,
-      eventId: `line:${event.webhookEventId ?? event.message?.id ?? `${lineUserId}:${Date.now()}`}`,
-    })
-    const liffUrl = config.liffId === 'not-configured' ? `${config.publicBaseUrl}/aieq` : `https://liff.line.me/${config.liffId}`
-    await replyMessages(replyToken, aieqMessages ?? [{
-      type: 'text',
-      text: `這裡是 AI 人格誌。點下方選單的「開始探索」就能開始，或輸入「開始 AIEQ」直接在聊天室作答。
-${liffUrl}`,
-    }])
-    return
-  }
-
   let membership = await resolveMembership(user.id)
 
   // ── 陌生人 ────────────────────────────────

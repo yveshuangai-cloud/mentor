@@ -17,7 +17,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "soul:build": "tsx scripts/build-soul-manifest.ts",
     "soul:lint": "tsx scripts/lint-pack.ts mantou",
-    "predeploy": "npm run soul:build && npm run soul:lint && npm run typecheck && npm test"
+    "predeploy": "npm run soul:build && npm run soul:lint && npm run typecheck && npm test",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
