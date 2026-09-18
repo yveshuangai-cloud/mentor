@@ -20,7 +20,8 @@ import { runProactiveCare } from './modules/proactive/care.js'
 import { nightlyHonestyReflection } from './modules/mirror.js'
 
 async function bootstrap(): Promise<void> {
-  const app = Fastify({ logger: true })
+  // Railway and Cloud Run terminate TLS in front of us; without this req.ip is the proxy hop and per-IP limits scatter.
+  const app = Fastify({ logger: true, trustProxy: true })
   const log = (msg: string) => app.log.info(msg)
 
   warnMissingConfig(log)
