@@ -50,6 +50,8 @@ try {
     findOrCreateSession,
     getProfile,
     listFriends,
+    listFriendsOfFriends,
+    setProfileVisibility,
   } = await import('../src/modules/aieq/repository.js')
 
   await autoMigrate(() => {})
@@ -126,11 +128,52 @@ try {
   const friends = await listFriends(friend.rows[0].id)
   assert.equal(friends.length, 1)
   assert.equal(friends[0].display_name, '測試河狸')
+
+  // Friends of friends: a third player becomes the friend's friend, never the user's.
+  const third = await platformQuery<{ id: number }>(
+    `INSERT INTO users (line_user_id,display_name) VALUES ('U-AIEQ-3','測試第三人') RETURNING id`,
+  )
+  const thirdInvite = await createFriendInvite(friend.rows[0].id)
+  assert.equal(await claimFriendInvite(third.rows[0].id, thirdInvite.token), 'pending')
+  let thirdSession = await findOrCreateSession(third.rows[0].id)
+  for (const [index, question] of AIEQ_QUESTIONS.entries()) {
+    thirdSession = (await appendEvent(third.rows[0].id, {
+      eventId: `third-integration-${index}`,
+      sessionId: thirdSession.id,
+      source: 'card',
+      kind: 'answer',
+      questionId: question.id,
+      optionId: question.options[index % 3].id,
+      occurredAt: new Date(Date.now() + 200 + index).toISOString(),
+      interpretationConfidence: 1,
+    })).session
+  }
+  await confirmProfile(third.rows[0].id, thirdSession.id, { visibleToFriends: true, personalizationConsent: false })
+  assert.equal((await listFriends(friend.rows[0].id)).length, 2, 'the friend now has two direct friends')
+  assert.equal((await listFriends(user.rows[0].id)).length, 1, 'the user still has one direct friend')
+
+  assert.equal(await listFriendsOfFriends(user.rows[0].id), null, 'second-degree list is withheld until the viewer opts in')
+  await setProfileVisibility(user.rows[0].id, 'friends_of_friends')
+  assert.deepEqual(await listFriendsOfFriends(user.rows[0].id), [], 'the third player has not opted in, so they stay invisible')
+  await setProfileVisibility(third.rows[0].id, 'friends_of_friends')
+  const second = await listFriendsOfFriends(user.rows[0].id)
+  assert.equal(second?.length, 1)
+  assert.equal(second?.[0].display_name, '測試第三人')
+  assert.deepEqual(second?.[0].via_names, ['測試朋友'], 'shows who the connection runs through')
+  assert.equal(second?.[0].mutual_count, 1)
+  assert.equal('strength' in (second?.[0] ?? {}), false, 'only nickname, avatar and type leave the server')
+  assert.equal((await listFriends(user.rows[0].id)).length, 1, 'opting in does not hide direct friends')
+  await confirmProfile(user.rows[0].id, session.id, { visibleToFriends: false, personalizationConsent: false })
+  assert.equal((await getProfile(user.rows[0].id))?.visibility, 'friends_of_friends', 're-confirming a result never downgrades an opted-in player')
+  await deleteAieqData(friend.rows[0].id)
+  assert.deepEqual(await listFriendsOfFriends(user.rows[0].id), [], 'losing the connecting friend removes their friends too')
+  await deleteAieqData(third.rows[0].id)
+
   await deleteAieqData(user.rows[0].id)
   assert.equal(await getProfile(user.rows[0].id), null)
   assert.equal((await listFriends(friend.rows[0].id)).length, 0)
 
-  console.log('AIEQ integration: migration, idempotency, scoring, confirmation and friendship passed')
+  console.log('AIEQ integration: migration, idempotency, scoring, confirmation, friendship and friends-of-friends passed')
 } finally {
   // Close pooled connections first; otherwise stopping Postgres masks the real failure.
   await closePool?.().catch(() => {})

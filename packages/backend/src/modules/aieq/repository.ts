@@ -211,7 +211,9 @@ export async function confirmProfile(userId: number, sessionId: string, options:
       `INSERT INTO aieq_profiles (user_id,session_id,type_code,animal_slug,visibility)
        VALUES ($1,$2,$3,$4,$5)
        ON CONFLICT (user_id) DO UPDATE SET session_id=EXCLUDED.session_id,type_code=EXCLUDED.type_code,
-       animal_slug=EXCLUDED.animal_slug,visibility=EXCLUDED.visibility,confirmed_at=now(),updated_at=now()`,
+       animal_slug=EXCLUDED.animal_slug,
+       visibility=CASE WHEN aieq_profiles.visibility='friends_of_friends' THEN aieq_profiles.visibility ELSE EXCLUDED.visibility END,
+       confirmed_at=now(),updated_at=now()`,
       [userId, sessionId, result.preferenceCode, animal.slug, visibility],
     )
     await client.query(
@@ -244,7 +246,7 @@ export async function createFriendInvite(userId: number): Promise<{ token: strin
        VALUES ($1,$2,now()+interval '7 days') RETURNING expires_at`, [token, userId],
     )
     // Pressing “invite” is the explicit moment the user chooses social visibility.
-    await client.query(`UPDATE aieq_profiles SET visibility='friends',updated_at=now() WHERE user_id=$1`, [userId])
+    await client.query(`UPDATE aieq_profiles SET visibility='friends',updated_at=now() WHERE user_id=$1 AND visibility='private'`, [userId])
     return { token, expiresAt: result.rows[0].expires_at.toISOString() }
   })
 }
@@ -304,8 +306,50 @@ export async function listFriends(userId: number): Promise<Array<Record<string, 
     `SELECT u.id,u.display_name,u.picture_url,p.type_code,p.animal_slug
      FROM aieq_friendships f
      JOIN users u ON u.id=CASE WHEN f.user_low_id=$1 THEN f.user_high_id ELSE f.user_low_id END
-     JOIN aieq_profiles p ON p.user_id=u.id AND p.visibility='friends'
+     JOIN aieq_profiles p ON p.user_id=u.id AND p.visibility IN ('friends','friends_of_friends')
      WHERE f.user_low_id=$1 OR f.user_high_id=$1 ORDER BY u.display_name NULLS LAST`, [userId],
+  )
+  return result.rows.map((row) => ({ ...row, animal: animalForCode(row.type_code) }))
+}
+
+export type ProfileVisibility = 'private' | 'friends' | 'friends_of_friends'
+
+export async function setProfileVisibility(userId: number, visibility: ProfileVisibility): Promise<void> {
+  const result = await platformQuery(
+    `UPDATE aieq_profiles SET visibility=$2,updated_at=now() WHERE user_id=$1`, [userId, visibility],
+  )
+  if (!result.rowCount) throw new Error('confirmed_profile_required')
+}
+
+/**
+ * Friends of the viewer's friends who opted in to friends_of_friends visibility.
+ * Returns null when the viewer has not opted in themselves: seeing second-degree
+ * players is only offered to players who can be seen the same way.
+ * Only nickname, avatar and type are exposed, plus who the connection runs through.
+ */
+export async function listFriendsOfFriends(userId: number): Promise<Array<Record<string, unknown>> | null> {
+  const me = await platformQuery<{ visibility: string }>(`SELECT visibility FROM aieq_profiles WHERE user_id=$1`, [userId])
+  if (me.rows[0]?.visibility !== 'friends_of_friends') return null
+  const result = await platformQuery<{
+    id: number; display_name: string | null; picture_url: string | null; type_code: string; via_names: string[]; mutual_count: number
+  }>(
+    `WITH mine AS (
+       SELECT CASE WHEN f.user_low_id=$1 THEN f.user_high_id ELSE f.user_low_id END AS friend_id
+       FROM aieq_friendships f WHERE f.user_low_id=$1 OR f.user_high_id=$1
+     ), second AS (
+       SELECT CASE WHEN f.user_low_id=m.friend_id THEN f.user_high_id ELSE f.user_low_id END AS candidate_id, m.friend_id AS via_id
+       FROM mine m JOIN aieq_friendships f ON f.user_low_id=m.friend_id OR f.user_high_id=m.friend_id
+     )
+     SELECT u.id,u.display_name,u.picture_url,p.type_code,
+            (array_agg(DISTINCT COALESCE(v.display_name,'LINE 朋友')))[1:3] AS via_names,
+            count(DISTINCT s.via_id)::int AS mutual_count
+     FROM second s
+     JOIN users u ON u.id=s.candidate_id
+     JOIN aieq_profiles p ON p.user_id=u.id AND p.visibility='friends_of_friends'
+     JOIN users v ON v.id=s.via_id
+     WHERE s.candidate_id<>$1 AND s.candidate_id NOT IN (SELECT friend_id FROM mine)
+     GROUP BY u.id,u.display_name,u.picture_url,p.type_code
+     ORDER BY mutual_count DESC, u.display_name NULLS LAST`, [userId],
   )
   return result.rows.map((row) => ({ ...row, animal: animalForCode(row.type_code) }))
 }

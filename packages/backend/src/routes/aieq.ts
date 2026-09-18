@@ -16,6 +16,8 @@ import {
   getProfile,
   getSession,
   listFriends,
+  listFriendsOfFriends,
+  setProfileVisibility,
 } from '../modules/aieq/repository.js'
 import { buildShareInviteFlex } from '../modules/aieq/flex.js'
 import { buildResultReport } from '../modules/aieq/report.js'
@@ -165,9 +167,25 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
   app.get('/friends', async (req, reply) => {
     try {
       const who = await identity(req)
-      return { friends: await listFriends(who.userId) }
+      const profile = await getProfile(who.userId)
+      return {
+        visibility: profile?.visibility ?? null,
+        friends: await listFriends(who.userId),
+        friendsOfFriends: await listFriendsOfFriends(who.userId),
+      }
     } catch (error) {
       return reply.code(401).send({ error: (error as Error).message })
+    }
+  })
+
+  app.post('/me/visibility', async (req, reply) => {
+    try {
+      const who = await identity(req)
+      const { visibility } = z.object({ visibility: z.enum(['private', 'friends', 'friends_of_friends']) }).parse(req.body)
+      await setProfileVisibility(who.userId, visibility)
+      return { ok: true, profile: await getProfile(who.userId) }
+    } catch (error) {
+      return reply.code(400).send({ error: (error as Error).message })
     }
   })
 
