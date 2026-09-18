@@ -326,6 +326,8 @@ LINE_LOGIN_CHANNEL_ID
 LIFF_ID
 ```
 
+選用（2026-09-18 起）：`LINE_OA_BASIC_ID`（加好友卡）、`AIEQ_ONLY_WEBHOOK=true`（AI 人格誌專用 webhook）、`AIEQ_ADMIN_LINE_USER_IDS`（可看漏斗統計的 LINE 使用者）、`AIEQ_TEAM_FEEDBACK=true`（**僅測試環境**：團隊回報小標籤，寫入 `aieq_team_feedback`「團隊反饋」表；正式環境不得設定）。
+
 必要規則：
 
 - Messaging API channel 與 LINE Login channel 必須在同一個 Provider。
