@@ -14,9 +14,10 @@ export default defineConfig({
     reuseExistingServer: true,
     timeout: 120_000,
   },
+  // iPhone descriptors default to WebKit; only Chromium is installed here, and the layout rules under test do not depend on the engine.
   projects: [
-    { name: 'iphone-se-liff', use: { ...devices['iPhone SE'], viewport: { width: 375, height: 620 } } },
-    { name: 'iphone-14-liff', use: { ...devices['iPhone 14'], viewport: { width: 390, height: 720 } } },
-    { name: 'iphone-14-plus-liff', use: { ...devices['iPhone 14 Plus'], viewport: { width: 430, height: 800 } } },
+    { name: 'iphone-se-liff', use: { ...devices['iPhone SE'], browserName: 'chromium', viewport: { width: 375, height: 620 } } },
+    { name: 'iphone-14-liff', use: { ...devices['iPhone 14'], browserName: 'chromium', viewport: { width: 390, height: 720 } } },
+    { name: 'iphone-14-plus-liff', use: { ...devices['iPhone 14 Plus'], browserName: 'chromium', viewport: { width: 430, height: 800 } } },
   ],
 })

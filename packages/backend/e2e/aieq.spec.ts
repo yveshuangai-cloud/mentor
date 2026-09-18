@@ -65,7 +65,12 @@ test('a finished but unconfirmed result survives a reload, then confirm keeps it
   await expect(page.locator('.result-code')).toHaveText(code)
   await page.locator('#confirmBtn').click()
   await expect(page.locator('#resultCard .panel')).toContainText('結果已確認')
-  const visibility = await page.evaluate(() => (window as unknown as { profile?: { visibility?: string } }).profile?.visibility)
+  // The app keeps its state in module scope, so read the stored profile back through the API with the same demo identity.
+  const visibility = await page.evaluate(async () => {
+    const token = 'local-demo:' + localStorage.getItem('aieq-demo-device')
+    const res = await fetch('/api/aieq/me', { headers: { Authorization: 'Bearer ' + token } })
+    return ((await res.json()) as { profile?: { visibility?: string } }).profile?.visibility
+  })
   expect(visibility).toBe('private')
 })
 

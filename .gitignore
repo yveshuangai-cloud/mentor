@@ -14,3 +14,7 @@ Thumbs.db
 coverage/
 .turbo/
 tmp/
+
+# Playwright output
+packages/backend/test-results/
+packages/backend/playwright-report/
