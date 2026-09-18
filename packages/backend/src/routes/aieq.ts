@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { config } from '../config.js'
 import { AIEQ_QUESTIONS } from '../modules/aieq/questions.js'
@@ -13,6 +13,7 @@ import {
   findCurrentSession,
   findOrCreateSession,
   getConfirmedProfileSession,
+  getFunnelStats,
   getProfile,
   getSession,
   listFriends,
@@ -20,6 +21,7 @@ import {
   setProfileVisibility,
 } from '../modules/aieq/repository.js'
 import { buildShareInviteFlex } from '../modules/aieq/flex.js'
+import { allow } from '../modules/aieq/rateLimit.js'
 import { buildResultReport } from '../modules/aieq/report.js'
 import { scoreAssessment } from '../modules/aieq/scoring.js'
 
@@ -36,6 +38,16 @@ const eventSchema = z.object({
 
 async function identity(req: FastifyRequest): Promise<AieqIdentity> {
   return verifyLiffIdToken(bearerToken(req.headers.authorization))
+}
+
+const adminLineUserIds = new Set(config.aieqAdminLineUserIds.split(',').map((id) => id.trim()).filter(Boolean))
+const isAieqAdmin = (who: AieqIdentity) => adminLineUserIds.has(who.lineUserId)
+
+// Per-user ceilings far above human pace; they exist to stop scripts, not players.
+function limited(reply: FastifyReply, key: string, limit: number, windowMs: number): boolean {
+  if (allow(key, limit, windowMs)) return false
+  void reply.code(429).send({ error: 'too_many_requests' })
+  return true
 }
 
 function present(session: Awaited<ReturnType<typeof findOrCreateSession>>) {
@@ -88,6 +100,7 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
   app.post('/sessions', async (req, reply) => {
     try {
       const who = await identity(req)
+      if (limited(reply, `sessions:${who.userId}`, 20, 60_000)) return
       const confirmed = await getConfirmedProfileSession(who.userId)
       if (confirmed) return { mode: 'result', profile: await getProfile(who.userId), ...present(confirmed) }
       let session = await findOrCreateSession(who.userId)
@@ -119,6 +132,7 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
   app.post('/sessions/:id/events', async (req, reply) => {
     try {
       const who = await identity(req)
+      if (limited(reply, `events:${who.userId}`, 60, 60_000)) return
       const parsed = eventSchema.parse(req.body)
       const transition = await appendEvent(who.userId, {
         ...parsed,
@@ -147,7 +161,7 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
   app.get('/me', async (req, reply) => {
     try {
       const who = await identity(req)
-      return { identity: who, profile: await getProfile(who.userId) }
+      return { identity: who, profile: await getProfile(who.userId), isAdmin: isAieqAdmin(who) }
     } catch (error) {
       return reply.code(401).send({ error: (error as Error).message })
     }
@@ -181,6 +195,7 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
   app.post('/me/visibility', async (req, reply) => {
     try {
       const who = await identity(req)
+      if (limited(reply, `visibility:${who.userId}`, 30, 60_000)) return
       const { visibility } = z.object({ visibility: z.enum(['private', 'friends', 'friends_of_friends']) }).parse(req.body)
       await setProfileVisibility(who.userId, visibility)
       return { ok: true, profile: await getProfile(who.userId) }
@@ -189,9 +204,21 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
     }
   })
 
+  // Funnel for the people running the event: counts only. Platform admin token or an allow-listed LINE user.
+  app.get('/stats', async (req, reply) => {
+    const adminToken = process.env.ADMIN_TOKEN
+    let allowed = Boolean(adminToken) && req.headers['x-admin-token'] === adminToken
+    if (!allowed) {
+      try { allowed = isAieqAdmin(await identity(req)) } catch { allowed = false }
+    }
+    if (!allowed) return reply.code(403).send({ error: 'forbidden' })
+    return { generatedAt: new Date().toISOString(), ...(await getFunnelStats()) }
+  })
+
   app.post('/friend-invites', async (req, reply) => {
     try {
       const who = await identity(req)
+      if (limited(reply, `invite:${who.userId}`, 20, 3_600_000)) return
       const invite = await createFriendInvite(who.userId)
       const entry = config.liffId === 'not-configured'
         ? `${config.publicBaseUrl}/aieq`
@@ -217,6 +244,7 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
   app.post('/friend-invites/:token/claim', async (req, reply) => {
     try {
       const who = await identity(req)
+      if (limited(reply, `claim:${who.userId}`, 30, 60_000)) return
       const status = await claimFriendInvite(who.userId, (req.params as { token: string }).token)
       return { ok: true, status, friends: await listFriends(who.userId) }
     } catch (error) {

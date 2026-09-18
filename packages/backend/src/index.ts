@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config, warnMissingConfig } from './config.js'
+import { allow } from './modules/aieq/rateLimit.js'
 import { autoMigrate } from './db/index.js'
 import { processQueuedWebhookEvents, webhookRoutes } from './routes/webhook.js'
 import { adminRoutes } from './routes/admin.js'
@@ -58,6 +59,7 @@ async function bootstrap(): Promise<void> {
   ].join('; ')
   app.addContentTypeParser(['application/csp-report', 'application/reports+json'], { parseAs: 'string', bodyLimit: 16_384 }, (_req, body, done) => done(null, body))
   app.post('/api/csp-report', async (req, reply) => {
+    if (!allow(`csp:${req.ip}`, 10, 60_000)) return reply.code(429).send()
     app.log.warn({ cspReport: String(req.body ?? '').slice(0, 2000), ua: req.headers['user-agent'] }, 'csp violation reported')
     return reply.code(204).send()
   })

@@ -52,6 +52,7 @@ try {
     listFriends,
     listFriendsOfFriends,
     setProfileVisibility,
+    getFunnelStats,
   } = await import('../src/modules/aieq/repository.js')
 
   await autoMigrate(() => {})
@@ -104,6 +105,7 @@ try {
     'confirmed users must return the canonical result instead of starting another session',
   )
   const invite = await createFriendInvite(user.rows[0].id)
+  assert.equal((await createFriendInvite(user.rows[0].id)).token, invite.token, 'sharing twice reuses the live invite link')
   assert.equal((await getProfile(user.rows[0].id))?.visibility, 'friends')
   assert.equal(await claimFriendInvite(friend.rows[0].id, invite.token), 'pending')
   assert.equal((await listFriends(friend.rows[0].id)).length, 0, 'claiming alone must not create friendship')
@@ -161,6 +163,14 @@ try {
   assert.equal(second?.[0].display_name, '測試第三人')
   assert.deepEqual(second?.[0].via_names, ['測試朋友'], 'shows who the connection runs through')
   assert.equal(second?.[0].mutual_count, 1)
+  const stats = await getFunnelStats()
+  assert.equal(stats.startedUsers, 3)
+  assert.equal(stats.completedSessions, 3)
+  assert.equal(stats.confirmed, 3)
+  assert.equal(stats.invitesAccepted, 2)
+  assert.equal(stats.friendships, 2)
+  assert.equal(stats.types.reduce((n, t) => n + t.count, 0), 3)
+  assert.ok(stats.days.length >= 1 && stats.days[0].started === 3)
   assert.equal('strength' in (second?.[0] ?? {}), false, 'only nickname, avatar and type leave the server')
   assert.equal((await listFriends(user.rows[0].id)).length, 1, 'opting in does not hide direct friends')
   await confirmProfile(user.rows[0].id, session.id, { visibleToFriends: false, personalizationConsent: false })

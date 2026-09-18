@@ -16,6 +16,17 @@ interface LineVerifiedToken {
 }
 
 const cache = new Map<string, { identity: AieqIdentity; expiresAt: number }>()
+const CACHE_MAX = 5_000
+
+// LINE rotates ID tokens roughly hourly, so without eviction the map grows with every login.
+function remember(idToken: string, entry: { identity: AieqIdentity; expiresAt: number }): void {
+  const now = Date.now()
+  if (cache.size >= CACHE_MAX) {
+    for (const [key, value] of cache) if (value.expiresAt <= now) cache.delete(key)
+    while (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value as string)
+  }
+  cache.set(idToken, entry)
+}
 
 export async function verifyLiffIdToken(idToken: string): Promise<AieqIdentity> {
   // Local-only escape hatch for hands-on demos. Production remains fail-closed
@@ -65,7 +76,7 @@ export async function verifyLiffIdToken(idToken: string): Promise<AieqIdentity> 
     displayName: verified.name,
     pictureUrl: verified.picture,
   }
-  cache.set(idToken, { identity, expiresAt: verified.exp * 1000 })
+  remember(idToken, { identity, expiresAt: verified.exp * 1000 })
   return identity
 }
 

@@ -33,6 +33,8 @@ const configSchema = z.object({
   aieqDemoMode: envBoolean(false),
   // The AI Personality staging account is not a Mantou tenant: its webhook must only run the quiz, never onboarding or LLM turns.
   aieqOnlyWebhook: envBoolean(false),
+  // Comma-separated LINE user IDs allowed to read the AI Personality funnel from inside the LIFF.
+  aieqAdminLineUserIds: blankAsUndefined(z.string().default('')),
   // 精確 LINE User ID 白名單；只從 Secret Manager 注入，不進程式庫。
   soulAuthorizedLineUserIds: blankAsUndefined(z.string().default('')),
 
@@ -91,6 +93,7 @@ const rawConfig = {
   lineOaBasicId: process.env.LINE_OA_BASIC_ID,
   aieqDemoMode: process.env.AIEQ_DEMO_MODE,
   aieqOnlyWebhook: process.env.AIEQ_ONLY_WEBHOOK,
+  aieqAdminLineUserIds: process.env.AIEQ_ADMIN_LINE_USER_IDS,
   soulAuthorizedLineUserIds: process.env.SOUL_AUTHORIZED_LINE_USER_IDS,
   anthropicApiKey: process.env.ANTHROPIC_API_KEY,
   llmBaseUrl: process.env.LLM_BASE_URL,

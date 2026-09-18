@@ -240,6 +240,16 @@ export async function createFriendInvite(userId: number): Promise<{ token: strin
   return withTransaction(async (client) => {
     const profile = await client.query(`SELECT 1 FROM aieq_profiles WHERE user_id=$1 FOR UPDATE`, [userId])
     if (!profile.rowCount) throw new Error('confirmed_profile_required')
+    // One live link per inviter: sharing twice must not mint a second token or let anyone flood the table.
+    const existing = await client.query<{ token: string; expires_at: Date }>(
+      `SELECT token,expires_at FROM aieq_friend_invites
+       WHERE inviter_user_id=$1 AND status='issued' AND expires_at>now()+interval '1 day'
+       ORDER BY created_at DESC LIMIT 1`, [userId],
+    )
+    if (existing.rows[0]) {
+      await client.query(`UPDATE aieq_profiles SET visibility='friends',updated_at=now() WHERE user_id=$1 AND visibility='private'`, [userId])
+      return { token: existing.rows[0].token, expiresAt: existing.rows[0].expires_at.toISOString() }
+    }
     const token = randomBytes(18).toString('base64url')
     const result = await client.query<{ expires_at: Date }>(
       `INSERT INTO aieq_friend_invites (token,inviter_user_id,expires_at)
@@ -352,6 +362,61 @@ export async function listFriendsOfFriends(userId: number): Promise<Array<Record
      ORDER BY mutual_count DESC, u.display_name NULLS LAST`, [userId],
   )
   return result.rows.map((row) => ({ ...row, animal: animalForCode(row.type_code) }))
+}
+
+export interface FunnelStats {
+  startedUsers: number
+  openSessions: number
+  completedSessions: number
+  confirmed: number
+  visibleToFriends: number
+  visibleToFriendsOfFriends: number
+  invitesIssued: number
+  invitesPending: number
+  invitesAccepted: number
+  friendships: number
+  types: Array<{ typeCode: string; count: number }>
+  days: Array<{ day: string; started: number; completed: number }>
+}
+
+/** Read-only funnel for the people running the event. Counts only; no names, no answers. */
+export async function getFunnelStats(): Promise<FunnelStats> {
+  const totals = await platformQuery<Record<string, string>>(`
+    SELECT
+      (SELECT count(DISTINCT user_id) FROM aieq_sessions) AS started_users,
+      (SELECT count(*) FROM aieq_sessions WHERE status IN ('in_progress','paused')) AS open_sessions,
+      (SELECT count(*) FROM aieq_sessions WHERE status='completed') AS completed_sessions,
+      (SELECT count(*) FROM aieq_profiles) AS confirmed,
+      (SELECT count(*) FROM aieq_profiles WHERE visibility IN ('friends','friends_of_friends')) AS visible_to_friends,
+      (SELECT count(*) FROM aieq_profiles WHERE visibility='friends_of_friends') AS visible_to_fof,
+      (SELECT count(*) FROM aieq_friend_invites) AS invites_issued,
+      (SELECT count(*) FROM aieq_friend_invites WHERE status='claimed') AS invites_pending,
+      (SELECT count(*) FROM aieq_friend_invites WHERE status='accepted') AS invites_accepted,
+      (SELECT count(*) FROM aieq_friendships) AS friendships`)
+  const types = await platformQuery<{ type_code: string; count: string }>(
+    `SELECT type_code, count(*) AS count FROM aieq_profiles GROUP BY type_code ORDER BY count DESC, type_code`,
+  )
+  const days = await platformQuery<{ day: string; started: string; completed: string }>(
+    `SELECT to_char(started_at AT TIME ZONE 'Asia/Taipei','YYYY-MM-DD') AS day,
+            count(*) AS started, count(*) FILTER (WHERE status='completed') AS completed
+     FROM aieq_sessions GROUP BY 1 ORDER BY 1 DESC LIMIT 14`,
+  )
+  const t = totals.rows[0]
+  const n = (key: string) => Number(t[key] ?? 0)
+  return {
+    startedUsers: n('started_users'),
+    openSessions: n('open_sessions'),
+    completedSessions: n('completed_sessions'),
+    confirmed: n('confirmed'),
+    visibleToFriends: n('visible_to_friends'),
+    visibleToFriendsOfFriends: n('visible_to_fof'),
+    invitesIssued: n('invites_issued'),
+    invitesPending: n('invites_pending'),
+    invitesAccepted: n('invites_accepted'),
+    friendships: n('friendships'),
+    types: types.rows.map((row) => ({ typeCode: row.type_code, count: Number(row.count) })),
+    days: days.rows.map((row) => ({ day: row.day, started: Number(row.started), completed: Number(row.completed) })),
+  }
 }
 
 export async function deleteAieqData(userId: number): Promise<void> {
