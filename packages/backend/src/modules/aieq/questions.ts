@@ -77,6 +77,26 @@ export const AIEQ_QUESTIONS: readonly AieqQuestion[] = [
   },
 ]
 
+/** Version stamped on every new session. Bump it whenever a question, option id, order or weight changes. */
+export const INSTRUMENT_VERSION = 'ai-personality-1.1-8q'
+
+/**
+ * Every bank that ever stamped a session, keyed by version. A session is always scored with the bank it
+ * was answered under, so changing the current bank never rewrites history. Never delete an entry that
+ * has sessions in the database.
+ */
+export const QUESTION_BANKS: Readonly<Record<string, readonly AieqQuestion[]>> = {
+  // 2026-09-11 to 2026-09-18: the same first seven items; q08 did not exist yet.
+  'ai-personality-1.0-7q': AIEQ_QUESTIONS.slice(0, 7),
+  [INSTRUMENT_VERSION]: AIEQ_QUESTIONS,
+}
+
+export function questionsFor(instrumentVersion: string): readonly AieqQuestion[] {
+  const bank = QUESTION_BANKS[instrumentVersion]
+  if (!bank) throw new Error(`unknown_instrument_version:${instrumentVersion}`)
+  return bank
+}
+
 export function getQuestion(questionId: string): AieqQuestion | undefined {
   return AIEQ_QUESTIONS.find((question) => question.id === questionId)
 }

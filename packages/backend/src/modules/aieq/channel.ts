@@ -1,7 +1,7 @@
 import { config } from '../../config.js'
 import type { LineMessage } from '../line.js'
 import { buildResultFlex, buildThreeChoiceFlex } from './flex.js'
-import { AIEQ_QUESTIONS } from './questions.js'
+import { questionsFor } from './questions.js'
 import { appendEvent, findActiveSession, findOrCreateSession, getConfirmedProfileSession, getSession } from './repository.js'
 import { freeTextToAnswerEvent } from './stateMachine.js'
 import { scoreAssessment } from './scoring.js'
@@ -14,8 +14,9 @@ const PAUSE_RE = /^(?:暫停|先休息|中斷)(?:測驗|測評)?$/
 const RESUME_RE = /^(?:繼續|繼續作答|恢復)(?:測驗|測評)?$/
 const BACK_RE = /^(?:上一題|回上一題|修改上一題)$/
 
-function questionMessage(sessionId: string, index: number): LineMessage {
-  const question = AIEQ_QUESTIONS[index]
+function questionMessage(session: { id: string; instrumentVersion: string }, index: number): LineMessage {
+  const question = questionsFor(session.instrumentVersion)[index]
+  const sessionId = session.id
   return {
     type: 'flex',
     altText: `AIEQ 第 ${index + 1} 題：${question.prompt}`,
@@ -24,7 +25,7 @@ function questionMessage(sessionId: string, index: number): LineMessage {
 }
 
 function resultMessages(session: Awaited<ReturnType<typeof findOrCreateSession>>): LineMessage[] {
-  const result = scoreAssessment(session)
+  const result = scoreAssessment(session, questionsFor(session.instrumentVersion))
   return [{
     type: 'flex',
     altText: `你的 AIEQ 結果：${result.preferenceCode}`,
@@ -39,7 +40,7 @@ function resultMessages(session: Awaited<ReturnType<typeof findOrCreateSession>>
 function nextMessages(session: Awaited<ReturnType<typeof findOrCreateSession>>): LineMessage[] {
   if (session.status === 'completed') return resultMessages(session)
   if (session.status === 'paused') return [{ type: 'text', text: '已暫停。下次跟我說「繼續 AIEQ」，我會從這一題接回來。' }]
-  return [questionMessage(session.id, session.currentQuestionIndex)]
+  return [questionMessage(session, session.currentQuestionIndex)]
 }
 
 export async function startAieq(userId: number, tenantId?: number): Promise<LineMessage[]> {
@@ -92,12 +93,12 @@ export async function handleAieqText(input: {
     kind: 'back' as const, occurredAt: new Date().toISOString(), rawText: input.text,
   }
   else {
-    const question = AIEQ_QUESTIONS[session.currentQuestionIndex]
+    const question = questionsFor(session.instrumentVersion)[session.currentQuestionIndex]
     event = freeTextToAnswerEvent({ eventId: input.eventId, sessionId: session.id, question, rawText: input.text })
     if (event.kind === 'answer' && !event.optionId) {
       return [
         { type: 'text', text: '我還不能確定你比較接近哪個選項。可以換個方式說，或直接點下面最接近的一項。' },
-        questionMessage(session.id, session.currentQuestionIndex),
+        questionMessage(session, session.currentQuestionIndex),
       ]
     }
   }

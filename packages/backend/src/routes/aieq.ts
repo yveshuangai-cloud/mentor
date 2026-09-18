@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { config } from '../config.js'
-import { AIEQ_QUESTIONS } from '../modules/aieq/questions.js'
+import { questionsFor } from '../modules/aieq/questions.js'
 import { animalForCode } from '../modules/aieq/catalog.js'
 import { bearerToken, verifyLiffIdToken, type AieqIdentity } from '../modules/aieq/auth.js'
 import {
@@ -51,14 +51,15 @@ function limited(reply: FastifyReply, key: string, limit: number, windowMs: numb
 }
 
 function present(session: Awaited<ReturnType<typeof findOrCreateSession>>) {
-  const question = AIEQ_QUESTIONS[session.currentQuestionIndex] ?? null
-  const result = session.status === 'completed' ? scoreAssessment(session) : null
+  const questions = questionsFor(session.instrumentVersion)
+  const question = questions[session.currentQuestionIndex] ?? null
+  const result = session.status === 'completed' ? scoreAssessment(session, questions) : null
   return {
     session: {
       id: session.id,
       status: session.status,
       currentQuestionIndex: session.currentQuestionIndex,
-      totalQuestions: AIEQ_QUESTIONS.length,
+      totalQuestions: questions.length,
       personalizationConsent: session.personalizationConsent,
     },
     question,

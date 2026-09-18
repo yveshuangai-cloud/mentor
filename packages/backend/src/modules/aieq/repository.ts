@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import type pg from 'pg'
 import { platformQuery, withTransaction } from '../../db/index.js'
-import { AIEQ_QUESTIONS } from './questions.js'
+import { questionsFor } from './questions.js'
 import { animalForCode } from './catalog.js'
 import { scoreAssessment } from './scoring.js'
 import { createAieqSession, transitionAieqSession } from './stateMachine.js'
@@ -160,7 +160,8 @@ export async function appendEvent(userId: number, event: AnswerEvent): Promise<{
   return withTransaction(async (client) => {
     const current = await loadWith(client, event.sessionId, userId, true)
     if (!current) throw new Error('session_not_found')
-    const transition = transitionAieqSession(current, event, AIEQ_QUESTIONS)
+    const questions = questionsFor(current.instrumentVersion)
+    const transition = transitionAieqSession(current, event, questions)
     if (transition.duplicate || !transition.accepted) return transition
 
     const inserted = await client.query(
@@ -181,7 +182,7 @@ export async function appendEvent(userId: number, event: AnswerEvent): Promise<{
         [event.sessionId, answer.questionId, answer.eventId, answer.optionId ?? null, answer.interpretationConfidence],
       )
     }
-    const result = transition.session.status === 'completed' ? scoreAssessment(transition.session) : null
+    const result = transition.session.status === 'completed' ? scoreAssessment(transition.session, questions) : null
     await client.query(
       `UPDATE aieq_sessions SET status=$2, current_question_index=$3, result=$4,
        updated_at=$5, completed_at=$6 WHERE id=$1`,
@@ -199,7 +200,7 @@ export async function confirmProfile(userId: number, sessionId: string, options:
   await withTransaction(async (client) => {
     const session = await loadWith(client, sessionId, userId, true)
     if (!session || session.status !== 'completed') throw new Error('completed_session_required')
-    const result = scoreAssessment(session)
+    const result = scoreAssessment(session, questionsFor(session.instrumentVersion))
     if (result.preferenceCode.includes('X')) throw new Error('insufficient_preference_evidence')
     const animal = animalForCode(result.preferenceCode)
     const pendingInvite = await client.query(

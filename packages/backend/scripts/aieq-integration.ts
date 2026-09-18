@@ -163,6 +163,29 @@ try {
   assert.equal(second?.[0].display_name, '測試第三人')
   assert.deepEqual(second?.[0].via_names, ['測試朋友'], 'shows who the connection runs through')
   assert.equal(second?.[0].mutual_count, 1)
+  // A session stamped with the retired seven-question bank still completes after seven answers and is scored by that bank.
+  const legacyUser = await platformQuery<{ id: number }>(
+    `INSERT INTO users (line_user_id,display_name) VALUES ('U-AIEQ-LEGACY','舊版玩家') RETURNING id`,
+  )
+  const legacyId = randomUUID()
+  await platformQuery(
+    `INSERT INTO aieq_sessions (id,user_id,instrument_version,status,current_question_index,started_at,updated_at)
+     VALUES ($1,$2,'ai-personality-1.0-7q','in_progress',0,now(),now())`, [legacyId, legacyUser.rows[0].id],
+  )
+  let legacy = (await findOrCreateSession(legacyUser.rows[0].id))
+  assert.equal(legacy.id, legacyId)
+  for (let index = 0; index < 7; index++) {
+    legacy = (await appendEvent(legacyUser.rows[0].id, {
+      eventId: `legacy-${index}`, sessionId: legacyId, source: 'card', kind: 'answer',
+      questionId: AIEQ_QUESTIONS[index].id, optionId: AIEQ_QUESTIONS[index].options[0].id,
+      occurredAt: new Date(Date.now() + 300 + index).toISOString(), interpretationConfidence: 1,
+    })).session
+  }
+  assert.equal(legacy.status, 'completed', 'seven answers complete a 1.0-7q session')
+  await confirmProfile(legacyUser.rows[0].id, legacyId, { visibleToFriends: false, personalizationConsent: false })
+  assert.equal((await getProfile(legacyUser.rows[0].id))?.type_code?.length, 4)
+  await deleteAieqData(legacyUser.rows[0].id)
+
   const stats = await getFunnelStats()
   assert.equal(stats.startedUsers, 3)
   assert.equal(stats.completedSessions, 3)

@@ -1,4 +1,4 @@
-export { AIEQ_QUESTIONS, getQuestion } from './questions.js'
+export { AIEQ_QUESTIONS, INSTRUMENT_VERSION, QUESTION_BANKS, getQuestion, questionsFor } from './questions.js'
 export { AIEQ_ANIMALS, animalForCode } from './catalog.js'
 export { buildResultFlex, buildShareInviteFlex, buildThreeChoiceFlex } from './flex.js'
 export { buildResultReport } from './report.js'

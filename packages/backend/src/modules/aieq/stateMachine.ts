@@ -1,3 +1,4 @@
+import { INSTRUMENT_VERSION } from './questions.js'
 import type { AieqQuestion, AieqSession, AnswerEvent, RecordedAnswer } from './types.js'
 
 export interface TransitionResult {
@@ -10,7 +11,7 @@ export interface TransitionResult {
 export function createAieqSession(id: string, now = new Date().toISOString()): AieqSession {
   return {
     id,
-    instrumentVersion: 'ai-personality-1.1-8q',
+    instrumentVersion: INSTRUMENT_VERSION,
     status: 'in_progress',
     currentQuestionIndex: 0,
     answers: {},
