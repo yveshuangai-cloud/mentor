@@ -21,6 +21,7 @@ import {
   setProfileVisibility,
 } from '../modules/aieq/repository.js'
 import { buildShareInviteFlex } from '../modules/aieq/flex.js'
+import { listMyTeamFeedback, recordTeamFeedback, TEAM_FEEDBACK_SPOT, TEAM_FEEDBACK_VERDICTS } from '../modules/aieq/teamFeedback.js'
 import { allow } from '../modules/aieq/rateLimit.js'
 import { buildResultReport } from '../modules/aieq/report.js'
 import { scoreAssessment } from '../modules/aieq/scoring.js'
@@ -34,6 +35,14 @@ const eventSchema = z.object({
   rawText: z.string().max(2000).optional(),
   interpretationConfidence: z.number().min(0).max(1).optional(),
   occurredAt: z.string().datetime().optional(),
+})
+
+const teamFeedbackSchema = z.object({
+  spot: z.string().regex(TEAM_FEEDBACK_SPOT),
+  verdict: z.enum(TEAM_FEEDBACK_VERDICTS),
+  comment: z.string().max(1000).optional(),
+  typeCode: z.string().regex(/^[EI][SN][TF][JP]$/).optional(),
+  sessionId: z.string().max(80).optional(),
 })
 
 async function identity(req: FastifyRequest): Promise<AieqIdentity> {
@@ -72,6 +81,7 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
     liffId: config.liffId,
     oaBasicId: config.lineOaBasicId,
     demoMode: config.nodeEnv !== 'production' && config.aieqDemoMode,
+    teamFeedback: config.aieqTeamFeedback,
   }))
 
   app.get('/entry', async (req, reply) => {
@@ -214,6 +224,32 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
     }
     if (!allowed) return reply.code(403).send({ error: 'forbidden' })
     return { generatedAt: new Date().toISOString(), ...(await getFunnelStats()) }
+  })
+
+  // 「團隊回報小標籤」: test environments only. Hidden (404) wherever AIEQ_TEAM_FEEDBACK is not set, i.e. production.
+  app.post('/team-feedback', async (req, reply) => {
+    if (!config.aieqTeamFeedback) return reply.code(404).send({ error: 'not_found' })
+    try {
+      const who = await identity(req)
+      if (limited(reply, `team-feedback:${who.userId}`, 30, 60_000)) return
+      const parsed = teamFeedbackSchema.safeParse(req.body)
+      if (!parsed.success) return reply.code(400).send({ error: 'invalid_feedback' })
+      const userAgent = String(req.headers['user-agent'] ?? '')
+      const saved = await recordTeamFeedback(who, { ...parsed.data, userAgent })
+      return { ok: true, ...saved }
+    } catch (error) {
+      return reply.code(401).send({ error: (error as Error).message })
+    }
+  })
+
+  app.get('/team-feedback/mine', async (req, reply) => {
+    if (!config.aieqTeamFeedback) return reply.code(404).send({ error: 'not_found' })
+    try {
+      const who = await identity(req)
+      return { spots: await listMyTeamFeedback(who.userId) }
+    } catch (error) {
+      return reply.code(401).send({ error: (error as Error).message })
+    }
   })
 
   app.post('/friend-invites', async (req, reply) => {

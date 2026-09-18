@@ -41,6 +41,7 @@ const child = spawn(process.execPath, [tsxCli, 'src/index.ts'], {
     ...process.env,
     NODE_ENV: 'development',
     AIEQ_DEMO_MODE: 'true',
+    AIEQ_TEAM_FEEDBACK: 'true',
     DATABASE_URL: `postgres://aieq:local-demo@127.0.0.1:${databasePort}/aieq_local`,
     PUBLIC_BASE_URL: `http://localhost:${appPort}`,
     PORT: String(appPort),

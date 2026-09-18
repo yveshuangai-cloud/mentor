@@ -9,5 +9,9 @@ function inviteFromUrl(search,origin){const params=new URLSearchParams(search),d
 function inviteErrorMessage(code){const why={cannot_friend_self:'這是你自己發出的邀請。把連結傳給朋友，由朋友打開並接受才會生效。',invite_invalid_or_expired:'這個邀請已過期或無效，請朋友再分享一次給你。',invite_already_claimed:'這個邀請已經被另一位朋友使用了，請對方再分享一次給你。'};return why[code]||('邀請無法使用：'+code)}
 function shouldOfferAddFriend(oaBasicId,isOaFriend){return Boolean(oaBasicId)&&isOaFriend!==true}
 function isValidOaBasicId(id){return /^@[A-Za-z0-9._-]{3,30}$/.test(id||'')}
-root.AieqCore={safe,truncateName,tendency,radarChart,inviteFromUrl,inviteErrorMessage,shouldOfferAddFriend,isValidOaBasicId}
+// 團隊回報小標籤: test environments only. Mirrors teamFeedbackSpotLabel in src/modules/aieq/teamFeedback.ts.
+const TEAM_VERDICTS=[['good','這裡規劃得很好'],['issue','這裡規劃有問題'],['other','我有其他意見']]
+function teamFeedbackSpotLabel(spot){const fixed={intro:'封面／開始頁','result:story':'結果解讀','result:radar':'雷達圖','result:cover':'人格封面','result:share':'分享預覽',friends:'朋友圈頁'};if(fixed[spot])return fixed[spot];const q=/^question:q(\d+)_/.exec(spot||'');return q?`第 ${Number(q[1])} 題`:String(spot||'')}
+function teamTagHtml(spot,mine){const v=mine&&mine.verdict;const label=TEAM_VERDICTS.find(x=>x[0]===v);return `<div class="team-tag" data-spot="${safe(spot)}"><div class="team-tag-head"><span class="team-tag-label">團隊回報小標籤</span><span class="team-tag-spot">${safe(teamFeedbackSpotLabel(spot))}</span></div><div class="team-tag-actions">${TEAM_VERDICTS.map(([id,text])=>`<button type="button" data-verdict="${id}"${v===id?' class="active"':''}>${text}</button>`).join('')}</div><div class="team-tag-form hidden"><textarea maxlength="1000" placeholder="想補充什麼？可留空，直接送出也可以。"></textarea><button type="button" class="team-tag-send">送出回報</button></div><p class="team-tag-note">${label?`已記錄：${label[1]}${mine.comment?'（'+safe(mine.comment)+'）':''}，可以再按一次修改。`:'只有測試環境看得到；回報會連同你的 LINE 暱稱與頭像記給團隊。'}</p></div>`}
+root.AieqCore={safe,truncateName,tendency,radarChart,inviteFromUrl,inviteErrorMessage,shouldOfferAddFriend,isValidOaBasicId,teamTagHtml}
 })(typeof window!=='undefined'?window:globalThis)

@@ -109,3 +109,24 @@ test('friends of friends appear only after opting in, then replay clears everyth
   await page.locator('#replayBtn').click()
   await expect(page.locator('#startBtn')).toBeVisible()
 })
+
+test('team feedback tag records a verdict with a note and remembers it after reload', async ({ page }) => {
+  await freshPlayer(page)
+  const tag = page.locator('#introTag .team-tag')
+  await expect(tag).toHaveAttribute('data-spot', 'intro')
+  await tag.getByRole('button', { name: '這裡規劃有問題' }).click()
+  await tag.locator('textarea').fill('封面字太小')
+  await tag.getByRole('button', { name: '送出回報' }).click()
+  await expect(page.locator('#introTag .team-tag-note')).toContainText('已記錄：這裡規劃有問題（封面字太小）')
+  await page.reload()
+  await expect(page.locator('#introTag [data-verdict="issue"]')).toHaveClass(/active/)
+
+  await page.locator('#startBtn').click()
+  const questionTag = page.locator('#questionCard .team-tag')
+  await expect(questionTag).toHaveAttribute('data-spot', 'question:q01_ai_trend')
+  await questionTag.getByRole('button', { name: '這裡規劃得很好' }).click()
+  await expect(questionTag.locator('.team-tag-note')).toContainText('已記錄：這裡規劃得很好')
+  // Answering still works with the tag below the choices.
+  await page.locator('.choice').nth(0).click()
+  await expect(page.locator('.counter')).toContainText('02')
+})

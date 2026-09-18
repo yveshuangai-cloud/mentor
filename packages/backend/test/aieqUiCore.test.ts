@@ -95,3 +95,29 @@ describe('LIFF page structure', () => {
     for (const name of Object.keys(core)) expect(pulled, `${name} is exported but unused`).toContain(name)
   })
 })
+
+describe('團隊回報小標籤 helpers (aieq-core.js)', () => {
+  it('names every key screen in plain words', () => {
+    const label = (spot: string) => /class="team-tag-spot">([^<]*)</.exec(core.teamTagHtml(spot))?.[1]
+    expect(label('intro')).toBe('封面／開始頁')
+    expect(label('question:q03_ai_image')).toBe('第 3 題')
+    expect(label('question:q08_ai_options')).toBe('第 8 題')
+    expect(label('result:radar')).toBe('雷達圖')
+    expect(label('friends')).toBe('朋友圈頁')
+    expect(label('something:new')).toBe('something:new')
+  })
+
+  it('renders the three verdict buttons and reflects what was already reported', () => {
+    const fresh = core.teamTagHtml('result:story')
+    expect(fresh).toContain('data-spot="result:story"')
+    expect(fresh).toContain('團隊回報小標籤')
+    for (const label of ['這裡規劃得很好', '這裡規劃有問題', '我有其他意見']) expect(fresh).toContain(label)
+    expect(fresh).toContain('回報會連同你的 LINE 暱稱與頭像記給團隊')
+    expect(fresh).not.toContain('class="active"')
+
+    const mine = core.teamTagHtml('intro', { verdict: 'issue', comment: '<b>字太小</b>' })
+    expect(mine).toContain('data-verdict="issue" class="active"')
+    expect(mine).toContain('已記錄：這裡規劃有問題（&lt;b&gt;字太小&lt;/b&gt;）')
+  })
+})
+

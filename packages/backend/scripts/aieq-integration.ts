@@ -40,6 +40,7 @@ try {
   const { autoMigrate, platformQuery, pool } = await import('../src/db/index.js')
   closePool = () => pool.end()
   const { AIEQ_QUESTIONS } = await import('../src/modules/aieq/questions.js')
+  const { listMyTeamFeedback, recordTeamFeedback, summarizeTeamFeedback } = await import('../src/modules/aieq/teamFeedback.js')
   const {
     appendEvent,
     claimFriendInvite,
@@ -186,6 +187,23 @@ try {
   assert.equal((await getProfile(legacyUser.rows[0].id))?.type_code?.length, 4)
   await deleteAieqData(legacyUser.rows[0].id)
 
+  // 團隊回報小標籤: the reporter's LINE identity is kept, replay/delete of quiz data leaves the notes alone.
+  const reporter = { userId: user.rows[0].id, lineUserId: 'U-AIEQ-1', displayName: '測試河狸', pictureUrl: 'https://profile.line-scdn.net/beaver' }
+  await recordTeamFeedback(reporter, { spot: 'intro', verdict: 'good', sessionId: session.id, userAgent: 'integration' })
+  await recordTeamFeedback(reporter, { spot: 'question:q03_ai_image', verdict: 'issue', comment: '第三題 B 太長', typeCode: 'ENTP', sessionId: 'not-mine' })
+  await recordTeamFeedback(reporter, { spot: 'question:q03_ai_image', verdict: 'other', comment: '改口：其實還好' })
+  const mine = await listMyTeamFeedback(user.rows[0].id)
+  assert.equal(mine['question:q03_ai_image']?.verdict, 'other', 'the latest verdict per screen wins')
+  assert.equal(mine.intro?.verdict, 'good')
+  const feedback = await summarizeTeamFeedback()
+  assert.equal(feedback.total, 3)
+  assert.equal(feedback.reporters, 1)
+  assert.deepEqual(feedback.bySpot.map((s) => [s.spot, s.good, s.issue, s.other]), [['question:q03_ai_image', 0, 1, 1], ['intro', 1, 0, 0]])
+  assert.equal(feedback.entries[2].instrumentVersion, session.instrumentVersion, 'a report is tied to the question bank the reporter saw')
+  assert.equal(feedback.entries[1].instrumentVersion, null, 'a session id that is not the reporter\'s is ignored')
+  assert.equal(feedback.entries[0].displayName, '測試河狸')
+  assert.equal(feedback.entries[0].pictureUrl, 'https://profile.line-scdn.net/beaver')
+
   const stats = await getFunnelStats()
   assert.equal(stats.startedUsers, 3)
   assert.equal(stats.completedSessions, 3)
@@ -204,6 +222,7 @@ try {
 
   await deleteAieqData(user.rows[0].id)
   assert.equal(await getProfile(user.rows[0].id), null)
+  assert.equal((await summarizeTeamFeedback()).total, 3, 'deleting quiz data never deletes team feedback')
   assert.equal((await listFriends(friend.rows[0].id)).length, 0)
 
   console.log('AIEQ integration: migration, idempotency, scoring, confirmation, friendship and friends-of-friends passed')
