@@ -4,10 +4,12 @@ import Fastify from 'fastify'
 // 「團隊回報小標籤」 routes: gated by AIEQ_TEAM_FEEDBACK, authenticated, validated, rate limited.
 const recordTeamFeedback = vi.fn(async () => ({ id: 1, createdAt: '2026-09-18T12:00:00.000Z' }))
 const listMyTeamFeedback = vi.fn(async () => ({ intro: { verdict: 'good', comment: null } }))
+const summarizeTeamFeedback = vi.fn(async (limit: number) => ({ total: 1, reporters: 1, bySpot: [], entries: [], limit }))
 
 vi.mock('../src/modules/aieq/auth.js', () => ({
   bearerToken: (header?: string) => header?.replace(/^Bearer\s+/i, '') ?? '',
   verifyLiffIdToken: async (token: string) => {
+    if (token === 'organiser') return { userId: 1, lineUserId: 'U-organiser', displayName: '威廷' }
     if (token !== 'tester') throw new Error('invalid_token')
     return { userId: 7, lineUserId: 'U-tester', displayName: '測試河狸', pictureUrl: 'https://profile.line-scdn.net/x' }
   },
@@ -16,10 +18,11 @@ vi.mock('../src/modules/aieq/teamFeedback.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/modules/aieq/teamFeedback.js')>()),
   recordTeamFeedback: (...args: unknown[]) => recordTeamFeedback(...(args as [])),
   listMyTeamFeedback: (...args: unknown[]) => listMyTeamFeedback(...(args as [])),
+  summarizeTeamFeedback: (...args: unknown[]) => summarizeTeamFeedback(...(args as [number])),
 }))
 vi.mock('../src/config.js', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../src/config.js')>()
-  return { ...mod, config: { ...mod.config, aieqTeamFeedback: true } }
+  return { ...mod, config: { ...mod.config, aieqTeamFeedback: true, aieqAdminLineUserIds: 'U-organiser' } }
 })
 
 const { config } = await import('../src/config.js')
@@ -103,3 +106,17 @@ describe('team feedback tag', () => {
     expect(listMyTeamFeedback).toHaveBeenCalledWith(7)
   })
 })
+
+describe('team feedback read-out', () => {
+  it('is only for the allow-listed organiser, and only while the flag is on', async () => {
+    const server = await app()
+    const tester = await server.inject({ url: '/api/aieq/team-feedback/summary', headers: auth })
+    expect(tester.statusCode).toBe(403)
+    const organiser = await server.inject({ url: '/api/aieq/team-feedback/summary?limit=5000', headers: { authorization: 'Bearer organiser' } })
+    expect(organiser.statusCode).toBe(200)
+    expect(organiser.json()).toMatchObject({ total: 1, reporters: 1, limit: 1000 })
+    config.aieqTeamFeedback = false
+    expect((await server.inject({ url: '/api/aieq/team-feedback/summary', headers: { authorization: 'Bearer organiser' } })).statusCode).toBe(404)
+  })
+})
+

@@ -21,7 +21,7 @@ import {
   setProfileVisibility,
 } from '../modules/aieq/repository.js'
 import { buildShareInviteFlex } from '../modules/aieq/flex.js'
-import { listMyTeamFeedback, recordTeamFeedback, TEAM_FEEDBACK_SPOT, TEAM_FEEDBACK_VERDICTS } from '../modules/aieq/teamFeedback.js'
+import { listMyTeamFeedback, recordTeamFeedback, summarizeTeamFeedback, TEAM_FEEDBACK_SPOT, TEAM_FEEDBACK_VERDICTS } from '../modules/aieq/teamFeedback.js'
 import { allow } from '../modules/aieq/rateLimit.js'
 import { buildResultReport } from '../modules/aieq/report.js'
 import { scoreAssessment } from '../modules/aieq/scoring.js'
@@ -216,14 +216,23 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
   })
 
   // Funnel for the people running the event: counts only. Platform admin token or an allow-listed LINE user.
-  app.get('/stats', async (req, reply) => {
+  const adminRequest = async (req: FastifyRequest): Promise<boolean> => {
     const adminToken = process.env.ADMIN_TOKEN
-    let allowed = Boolean(adminToken) && req.headers['x-admin-token'] === adminToken
-    if (!allowed) {
-      try { allowed = isAieqAdmin(await identity(req)) } catch { allowed = false }
-    }
-    if (!allowed) return reply.code(403).send({ error: 'forbidden' })
+    if (Boolean(adminToken) && req.headers['x-admin-token'] === adminToken) return true
+    try { return isAieqAdmin(await identity(req)) } catch { return false }
+  }
+
+  app.get('/stats', async (req, reply) => {
+    if (!(await adminRequest(req))) return reply.code(403).send({ error: 'forbidden' })
     return { generatedAt: new Date().toISOString(), ...(await getFunnelStats()) }
+  })
+
+  // Read-out of the 團隊反饋 table for whoever runs the test round; same allow-list as /stats, no UI on purpose.
+  app.get('/team-feedback/summary', async (req, reply) => {
+    if (!config.aieqTeamFeedback) return reply.code(404).send({ error: 'not_found' })
+    if (!(await adminRequest(req))) return reply.code(403).send({ error: 'forbidden' })
+    const limit = Math.min(Math.max(Number((req.query as { limit?: string }).limit ?? 200) || 200, 1), 1000)
+    return { generatedAt: new Date().toISOString(), ...(await summarizeTeamFeedback(limit)) }
   })
 
   // 「團隊回報小標籤」: test environments only. Hidden (404) wherever AIEQ_TEAM_FEEDBACK is not set, i.e. production.
