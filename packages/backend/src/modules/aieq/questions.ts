@@ -44,7 +44,7 @@ export const AIEQ_QUESTIONS: readonly AieqQuestion[] = [
   {
     id: 'q05_ai_slides', scenario: '判斷｜AI 簡報', prompt: '看到 AI 做的簡報，你最先說什麼？',
     validation: 'cross_check', dimensions: ['TF'], options: [
-      option('usable', '我會先想：「這能不能直接用？」', '只要方向對、能解決問題，我願意先用再調整。', { TF: -0.5 }, ['還不錯', '可以用']),
+      option('usable', '我先想：「能直接用嗎？」', '只要方向對、能解決問題，我願意先用再調整。', { TF: -0.5 }, ['還不錯', '可以用']),
       option('warmth', '我先看它能不能打動人', '內容就算正確，我也在意觀眾看了有沒有感覺。', { TF: 2 }, ['少了溫度']),
       option('error', '我先看內容有沒有講錯', '數字、結論和前後邏輯正不正確，對我最重要。', { TF: -2 }, ['邏輯錯誤']),
     ],
