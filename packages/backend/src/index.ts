@@ -26,6 +26,41 @@ async function bootstrap(): Promise<void> {
   await autoMigrate(log)
 
   await app.register(cors, { origin: false }) // 後台 UI 上線時再開白名單
+
+  // Baseline hardening for every response. HSTS only makes sense once the public URL is HTTPS.
+  const hsts = config.publicBaseUrl.startsWith('https://')
+  app.addHook('onSend', async (_req, reply) => {
+    reply.header('x-content-type-options', 'nosniff')
+    reply.header('referrer-policy', 'strict-origin-when-cross-origin')
+    if (hsts) reply.header('strict-transport-security', 'max-age=15552000')
+    const type = String(reply.getHeader('content-type') ?? '')
+    if (type.startsWith('text/html')) {
+      // LIFF pages open in LINE's in-app browser, never inside an iframe.
+      reply.header('x-frame-options', 'DENY')
+      reply.header('x-robots-tag', 'noindex')
+    }
+  })
+
+  // CSP for the LIFF page, report-only until real LINE sessions prove the allow-list. Violations land in the server log.
+  const liffCsp = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://static.line-scdn.net https://*.line-scdn.net",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "connect-src 'self' https://*.line.me https://*.line-scdn.net https://*.line-apps.com https://*.line.biz",
+    "font-src 'self' data:",
+    "worker-src 'self'",
+    "manifest-src 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self' https://*.line.me",
+    'report-uri /api/csp-report',
+  ].join('; ')
+  app.addContentTypeParser(['application/csp-report', 'application/reports+json'], { parseAs: 'string', bodyLimit: 16_384 }, (_req, body, done) => done(null, body))
+  app.post('/api/csp-report', async (req, reply) => {
+    app.log.warn({ cspReport: String(req.body ?? '').slice(0, 2000), ua: req.headers['user-agent'] }, 'csp violation reported')
+    return reply.code(204).send()
+  })
   await app.register(fastifyStatic, {
     root: join(dirname(fileURLToPath(import.meta.url)), '../../../assets/aieq'),
     prefix: '/aieq/assets/',
@@ -51,13 +86,15 @@ async function bootstrap(): Promise<void> {
 
   // 後台 UI（單檔、免建置；權限靠 UI 內輸入的 X-Admin-Token 打 admin API）
   app.get('/admin', async (_req, reply) => {
+    // An AI Personality-only deployment has nothing to administer here; do not expose the console shell at all.
+    if (config.aieqOnlyWebhook) return reply.code(404).send({ error: 'not_found' })
     const html = await readFile(join(dirname(fileURLToPath(import.meta.url)), '../public/admin.html'), 'utf8')
     return reply.type('text/html; charset=utf-8').send(html)
   })
 
   app.get('/aieq', async (_req, reply) => {
     const html = await readFile(join(dirname(fileURLToPath(import.meta.url)), '../public/aieq.html'), 'utf8')
-    return reply.type('text/html; charset=utf-8').send(html)
+    return reply.header('content-security-policy-report-only', liffCsp).type('text/html; charset=utf-8').send(html)
   })
 
   app.get('/aieq-manifest.webmanifest', async (_req, reply) => {

@@ -41,6 +41,22 @@ describe('AI Personality scoring contract', () => {
   })
 })
 
+describe('AI Personality artwork', () => {
+  it('serves every scene, share card and animal as an existing JPEG', () => {
+    const root = resolve(import.meta.dirname, '../../..')
+    const toFile = (url: string) => url
+      .replace('/aieq/assets/', 'assets/aieq/')
+      .replace('/aieq/scenes/', 'assets/ai-personality/scenes/')
+      .replace('/aieq/design/', 'output/design/')
+    for (const animal of Object.values(AIEQ_ANIMALS)) {
+      for (const url of [animal.imagePath, animal.resultScenePath, animal.shareCardPath]) {
+        expect(url, animal.code).toMatch(/\.jpg$/)
+        expect(existsSync(resolve(root, toFile(url))), url).toBe(true)
+      }
+    }
+  })
+})
+
 describe('AI Personality persona copy', () => {
   it('gives all 16 types a full plain-language reading', () => {
     expect(Object.keys(AIEQ_ANIMALS)).toHaveLength(16)

@@ -38,10 +38,10 @@ const titles: Record<string, string> = {
 }
 
 const shareCardFiles: Record<string, string> = {
-  ISTJ: '01-istj-beaver.png', ISFJ: '02-isfj-penguin.png', INFJ: '03-infj-elephant.png', INTJ: '04-intj-owl.png',
-  ISTP: '05-istp-cat.png', ISFP: '06-isfp-red-panda.png', INFP: '07-infp-deer.png', INTP: '08-intp-octopus.png',
-  ESTP: '09-estp-cheetah.png', ESFP: '10-esfp-parrot.png', ENFP: '11-enfp-otter.png', ENTP: '12-entp-crow.png',
-  ESTJ: '13-estj-sheepdog.png', ESFJ: '14-esfj-bee.png', ENFJ: '15-enfj-dolphin.png', ENTJ: '16-entj-orca.png',
+  ISTJ: '01-istj-beaver.jpg', ISFJ: '02-isfj-penguin.jpg', INFJ: '03-infj-elephant.jpg', INTJ: '04-intj-owl.jpg',
+  ISTP: '05-istp-cat.jpg', ISFP: '06-isfp-red-panda.jpg', INFP: '07-infp-deer.jpg', INTP: '08-intp-octopus.jpg',
+  ESTP: '09-estp-cheetah.jpg', ESFP: '10-esfp-parrot.jpg', ENFP: '11-enfp-otter.jpg', ENTP: '12-entp-crow.jpg',
+  ESTJ: '13-estj-sheepdog.jpg', ESFJ: '14-esfj-bee.jpg', ENFJ: '15-enfj-dolphin.jpg', ENTJ: '16-entj-orca.jpg',
 }
 
 export const AIEQ_ANIMALS: Record<string, AieqAnimal> = Object.fromEntries(
@@ -50,8 +50,8 @@ export const AIEQ_ANIMALS: Record<string, AieqAnimal> = Object.fromEntries(
     slug,
     name,
     title: titles[code],
-    imagePath: `/aieq/assets/animals/swiss-modernist/${code.toLowerCase()}-${slug}.png`,
-    resultScenePath: `/aieq/scenes/results/${code.toLowerCase()}-${slug}-v1.png`,
+    imagePath: `/aieq/assets/animals/swiss-modernist/${code.toLowerCase()}-${slug}.jpg`,
+    resultScenePath: `/aieq/scenes/results/${code.toLowerCase()}-${slug}-v1.jpg`,
     shareCardPath: `/aieq/design/ai-personality-share-cards-16/${shareCardFiles[code]}`,
     strength,
     blindSpot,
@@ -65,9 +65,9 @@ export function animalForCode(code: string): AieqAnimal {
     slug: 'explorer',
     name: '探索者',
     title: '證據蒐集中',
-    imagePath: '/aieq/assets/animals/swiss-modernist/aieq-16-contact-sheet.png',
-    resultScenePath: '/aieq/scenes/start/start-exploration-v1.png',
-    shareCardPath: '/aieq/design/ai-personality-share-cards-16/_contact-sheet.png',
+    imagePath: '/aieq/assets/animals/swiss-modernist/aieq-16-contact-sheet.jpg',
+    resultScenePath: '/aieq/scenes/start/start-exploration-v1.jpg',
+    shareCardPath: '/aieq/design/ai-personality-share-cards-16/_contact-sheet.jpg',
     strength: '仍在蒐集跨情境證據',
     blindSpot: '目前證據不足，不宜過早定型',
     growthRoute: '補充情境後再確認結果',

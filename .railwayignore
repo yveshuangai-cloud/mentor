@@ -5,3 +5,7 @@
 /output/documents/
 /output/pdf/
 /output/*.pptx
+# PNG design masters: the app serves the JPEG next to each one.
+/assets/ai-personality/scenes/**/*.png
+/output/design/ai-personality-share-cards-16/*.png
+/assets/aieq/animals/swiss-modernist/*.png

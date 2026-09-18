@@ -6,4 +6,7 @@ packages/*/dist
 .env.*
 !.env.example
 docs
+assets/ai-personality/scenes/**/*.png
+output/design/ai-personality-share-cards-16/*.png
+assets/aieq/animals/swiss-modernist/*.png
 *.log
