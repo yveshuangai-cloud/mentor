@@ -61,6 +61,11 @@
 - 連線池上限 10：Railway 單實例足夠。
 - 安全標頭與 CSP：已上線（CSP 為 report-only，待團隊測試後轉強制）。
 
+## 進度（2026-09-18 晚間）
+
+- 第 2、3、4 項已完成並上線 staging（commit `a94dbe1`、`9e91e78`）：ID token 快取上限 5,000 並淘汰過期；建立 session／答題事件／可見範圍／邀請／接受邀請依使用者限流，CSP 回報依 IP 限流（Fastify 開啟 `trustProxy` 才能在 Railway 後面取得真實客戶端 IP）；重複分享重用同一條有效邀請連結；`GET /api/aieq/stats` 提供漏斗（僅計數），平台 `x-admin-token` 或 `AIEQ_ADMIN_LINE_USER_IDS` 名單內的 LINE 使用者可讀，後者在朋友圈頁看得到「活動統計」卡。
+- 待辦：第 1 項題庫版本分流、第 5 項前端拆檔與測試、第 6 項 AIEQ 獨立 webhook。
+
 ## 建議順序
 
 1. 限流＋token 快取淘汰（一次小 PR，半天內）。
