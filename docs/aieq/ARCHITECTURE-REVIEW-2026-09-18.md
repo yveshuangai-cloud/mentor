@@ -66,7 +66,7 @@
 - 第 2、3、4 項已完成並上線 staging（commit `a94dbe1`、`9e91e78`）：ID token 快取上限 5,000 並淘汰過期；建立 session／答題事件／可見範圍／邀請／接受邀請依使用者限流，CSP 回報依 IP 限流（Fastify 開啟 `trustProxy` 才能在 Railway 後面取得真實客戶端 IP）；重複分享重用同一條有效邀請連結；`GET /api/aieq/stats` 提供漏斗（僅計數），平台 `x-admin-token` 或 `AIEQ_ADMIN_LINE_USER_IDS` 名單內的 LINE 使用者可讀，後者在朋友圈頁看得到「活動統計」卡。
 - 2026-09-19 完成第 1、5、6 項：
   - **題庫版本分流**：`QUESTION_BANKS` 以 `instrumentVersion` 為鍵保留每一版題庫（`1.0-7q`、`1.1-8q`），session、計分、確認、LIFF API 與 LINE 卡片都用該 session 自己的題庫；未知版本直接拒絕。integration 含舊版 7 題 session 情境。**日後 Eve 哥八題到位：新增一個版本鍵、更新 `INSTRUMENT_VERSION`，舊結果不受影響。**
-  - **前端拆檔**：`aieq.html`（純標記）＋`aieq.css`＋`aieq.js`＋`aieq-core.js`（純邏輯，vitest 直接以 vm 載入測試 9 條）；資源網址帶內容雜湊，命中版本快取一年、HTML 不快取；結構測試禁止內嵌 script／style 回流。Playwright 設定與 7 條手機流程 spec 已寫在 `e2e/`（`npm run test:e2e`），**尚未安裝** `@playwright/test` 與 Chromium，待威廷同意下載。
+  - **前端拆檔**：`aieq.html`（純標記）＋`aieq.css`＋`aieq.js`＋`aieq-core.js`（純邏輯，vitest 直接以 vm 載入測試 9 條）；資源網址帶內容雜湊，命中版本快取一年、HTML 不快取；結構測試禁止內嵌 script／style 回流。Playwright 設定與 7 條手機流程 spec 在 `e2e/`（`npm run test:e2e`）；三個 iPhone 專案固定用 Chromium（裝置描述檔預設 WebKit，未安裝），21 條全數通過（2026-09-19）。瀏覽器二進位與 `@playwright/test` 安裝在使用者家目錄，只有 lockfile 進倉庫。
   - **AIEQ 獨立 webhook**：`routes/aieqWebhook.ts` 依 `AIEQ_ONLY_WEBHOOK` 掛在同一路徑取代饅頭 webhook；cron 排空佇列也依角色分流；`routes/webhook.ts` 恢復為饅頭原貌。5 條 Fastify inject 測試（簽章、指令、導引、忽略媒體、postback）。
 - 檢視清單全部處理完畢；第 7 項小型技術債仍待辦。
 
