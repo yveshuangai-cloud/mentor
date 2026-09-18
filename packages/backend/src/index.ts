@@ -4,6 +4,7 @@ import fastifyStatic from '@fastify/static'
 import { readFile } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createHash } from 'node:crypto'
 import { config, warnMissingConfig } from './config.js'
 import { allow } from './modules/aieq/rateLimit.js'
 import { autoMigrate } from './db/index.js'
@@ -95,10 +96,36 @@ async function bootstrap(): Promise<void> {
     return reply.type('text/html; charset=utf-8').send(html)
   })
 
+  // The LIFF page is HTML + three static files. Their URLs carry a content hash so phones never keep a stale
+  // script after a deploy, while the files themselves can be cached hard.
+  const publicDir = join(dirname(fileURLToPath(import.meta.url)), '../public')
+  const liffAssets: Record<string, { file: string; type: string }> = {
+    '/aieq.css': { file: 'aieq.css', type: 'text/css; charset=utf-8' },
+    '/aieq-core.js': { file: 'aieq-core.js', type: 'application/javascript; charset=utf-8' },
+    '/aieq.js': { file: 'aieq.js', type: 'application/javascript; charset=utf-8' },
+  }
+  const assetHash = createHash('sha1')
+  for (const asset of Object.values(liffAssets)) assetHash.update(await readFile(join(publicDir, asset.file)))
+  const assetVersion = assetHash.digest('hex').slice(0, 10)
+  const liffHtml = (await readFile(join(publicDir, 'aieq.html'), 'utf8')).replaceAll('__ASSET_V__', assetVersion)
+
   app.get('/aieq', async (_req, reply) => {
-    const html = await readFile(join(dirname(fileURLToPath(import.meta.url)), '../public/aieq.html'), 'utf8')
-    return reply.header('content-security-policy-report-only', liffCsp).type('text/html; charset=utf-8').send(html)
+    return reply
+      .header('content-security-policy-report-only', liffCsp)
+      .header('cache-control', 'no-cache')
+      .type('text/html; charset=utf-8')
+      .send(liffHtml)
   })
+  for (const [path, asset] of Object.entries(liffAssets)) {
+    app.get(path, async (req, reply) => {
+      const body = await readFile(join(publicDir, asset.file), 'utf8')
+      const versioned = (req.query as { v?: string }).v === assetVersion
+      return reply
+        .header('cache-control', versioned ? 'public, max-age=31536000, immutable' : 'no-cache')
+        .type(asset.type)
+        .send(body)
+    })
+  }
 
   app.get('/aieq-manifest.webmanifest', async (_req, reply) => {
     const manifest = await readFile(join(dirname(fileURLToPath(import.meta.url)), '../public/aieq-manifest.webmanifest'), 'utf8')
