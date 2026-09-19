@@ -89,7 +89,9 @@ export interface AxisResult extends DimensionScore {
   axisName: string
   /** Machine key of the leaning pole, e.g. 'out'; 'unknown' when there is no evidence. */
   pole: string
-  /** Plain-language name of the leaning pole, e.g. 向外. */
+  /** The familiar one-letter shorthand for the leaning pole, e.g. E. */
+  poleLetter: string
+  /** Name of the leaning pole in the planner's vocabulary, e.g. 外部共創. */
   poleName: string
   /** One line saying what that leaning looks like in daily life. */
   poleBlurb: string

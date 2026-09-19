@@ -51,6 +51,9 @@ describe('LIFF pure helpers (aieq-core.js)', () => {
     for (const axis of Object.values(scoreAssessment(session, AIEQ_QUESTIONS).axes)) {
       expect([...axis.poleBlurb].length, `${axis.dimension} blurb`).toBeGreaterThanOrEqual(12)
       expect(axis.poleBlurb, `${axis.dimension} blurb`).not.toMatch(/[EISNTFJP] ?\/|MBTI/)
+      // The shorthand must always arrive with the meaning the planner gave it.
+      expect(axis.poleLetter, `${axis.dimension} letter`).toMatch(/^[EISNTFJP]$/)
+      expect([...axis.poleName].length, `${axis.dimension} pole name`).toBeGreaterThanOrEqual(4)
     }
   })
 

@@ -14,27 +14,29 @@ import {
 } from './types.js'
 
 // Each axis runs between two poles described in plain Chinese. A negative balance leans left, a positive one right.
-type Pole = { key: string; name: string; blurb: string }
+type Pole = { key: string; letter: string; name: string; blurb: string }
+// Names and descriptions are the chief planner's own, from AI Personality V.4 (2026-09-19).
+// The letter is the familiar shorthand; the name and the line under it are what it means here.
 const AXIS_POLES: Record<AxisId, { name: string; left: Pole; right: Pole }> = {
   energy: {
-    name: '能量來源',
-    left: { key: 'out', name: '向外', blurb: '跟人討論就會充電，想法愈講愈清楚' },
-    right: { key: 'in', name: '向內', blurb: '獨處時最能回電，想法在心裡整理好才說出口' },
+    name: '協作方法',
+    left: { key: 'out', letter: 'E', name: '外部共創', blurb: '透過團隊互動、召集與外部回饋來推進工作' },
+    right: { key: 'in', letter: 'I', name: '獨立深思', blurb: '先獨立研究、完成原型後再與人分享' },
   },
   input: {
-    name: '接收資訊',
-    left: { key: 'real', name: '務實', blurb: '先看得到的事實與細節，一步一步確認' },
-    right: { key: 'idea', name: '想像', blurb: '擅長跳躍聯想，先抓住整體的可能性' },
+    name: '思考方式',
+    left: { key: 'real', letter: 'S', name: '實證拆解', blurb: '專注於具體操作、資料拆解與可觀察的錯誤' },
+    right: { key: 'idea', letter: 'N', name: '全局模式', blurb: '從整體架構、小規模實驗與未來可能性切入' },
   },
   decide: {
-    name: '做決定',
-    left: { key: 'logic', name: '邏輯', blurb: '用證據和條件衡量，重視客觀與效率' },
-    right: { key: 'feel', name: '感受', blurb: '先想到人的感受，在乎關係與價值' },
+    name: '決策基準',
+    left: { key: 'logic', letter: 'T', name: '原則測試', blurb: '依靠客觀數據、測試標準與風險門檻做決定' },
+    right: { key: 'feel', letter: 'F', name: '人際共感', blurb: '優先考量人的顧慮、情境影響與團隊共識' },
   },
   action: {
-    name: '行動方式',
-    left: { key: 'plan', name: '規劃', blurb: '凡事提前安排，照著進度把事情收尾' },
-    right: { key: 'flex', name: '彈性', blurb: '保留變動空間，邊做邊調整找出路' },
+    name: '積極態度',
+    left: { key: 'plan', letter: 'J', name: '結構收斂', blurb: '習慣先定義範圍、重排行程與建立檢查點' },
+    right: { key: 'flex', letter: 'P', name: '彈性探索', blurb: '喜歡邊做邊改，透過回饋逐步收斂未知路徑' },
   },
 }
 
@@ -122,6 +124,7 @@ function axisResult(
     axisName: poles.name,
     confidence: clarity,
     pole: decided ? leaning.key : 'unknown',
+    poleLetter: decided ? leaning.letter : 'X',
     poleName: decided ? leaning.name : '還看不出來',
     poleBlurb: decided ? leaning.blurb : '這次的作答還不足以判斷這一條',
     strength: round(clarity * 100),

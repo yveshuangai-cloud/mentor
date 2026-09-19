@@ -247,7 +247,8 @@ describe('AIEQ scoring boundaries', () => {
 
     expect(resultA.axes.energy.pole).toBe('in')
     expect(resultB.axes.energy.pole).toBe('in')
-    expect(resultA.axes.energy.poleName).toBe('向內')
+    expect(resultA.axes.energy.poleName).toBe('獨立深思')
+    expect(resultA.axes.energy.poleLetter).toBe('I')
     expect(resultA.aieqAbilities.ai_collaboration.score).toBe(100)
     expect(resultB.aieqAbilities.ai_collaboration.score).toBe(0)
   })
