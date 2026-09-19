@@ -78,10 +78,18 @@ function page(animal: (typeof AIEQ_ANIMALS)[string], sceneDataUri: string, logoD
 const logo = `data:image/png;base64,${(await readFile(
   join(repoDir, 'assets/aieq/digiasia/digiasia-2026-mark-white.png'))).toString('base64')}`
 
+// --scale 2 renders at twice the pixel size for review copies; --only <slug> does a single card.
+const args = process.argv.slice(2)
+const argOf = (name: string) => { const i = args.indexOf(name); return i === -1 ? undefined : args[i + 1] }
+const scale = Number(argOf('--scale') ?? 1)
+const only = argOf('--only')
+const targetDir = argOf('--out') ? join(repoDir, argOf('--out') as string) : outDir
+
 const browser = await chromium.launch()
-const tab = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 })
+const tab = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: scale })
 let n = 0
 for (const animal of Object.values(AIEQ_ANIMALS)) {
+  if (only && animal.slug !== only) continue
   const scenePath = join(repoDir, animal.resultScenePath.replace('/aieq/scenes/', 'assets/ai-personality/scenes/'))
   const scene = `data:image/jpeg;base64,${(await readFile(scenePath)).toString('base64')}`
   await tab.setContent(page(animal, scene, logo), { waitUntil: 'load' })
@@ -100,9 +108,10 @@ for (const animal of Object.values(AIEQ_ANIMALS)) {
     return { gap: Math.round(m.left - widest), lines: lines.length }
   })
   if (clearance.gap < 16) throw new Error(`${file}: 「${animal.edge}」 comes within ${clearance.gap}px of the event mark`)
-  await writeFile(join(outDir, file), await tab.screenshot({ type: 'jpeg', quality: 88 }))
+  const name = scale === 1 ? file : file.replace('.jpg', `@${scale}x.jpg`)
+  await writeFile(join(targetDir, name), await tab.screenshot({ type: 'jpeg', quality: 92 }))
   n += 1
-  console.log(`  ${file.padEnd(16)} ${animal.edge.padEnd(14)} ${clearance.lines} 行・距標誌 ${clearance.gap}px`)
+  console.log(`  ${name.padEnd(20)} ${W * scale}x${H * scale}  ${animal.edge.padEnd(14)} 距標誌 ${clearance.gap}px`)
 }
 await browser.close()
 console.log(`\n${n} 張分享卡已重出（941x1672，頭像圈留空）`)
