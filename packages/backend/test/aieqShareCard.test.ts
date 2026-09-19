@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { AIEQ_ANIMALS, buildShareInviteFlex } from '../src/modules/aieq/index.js'
 
 const base = {
-  typeCode: 'ENFP',
+  typeCode: 'out-idea-feel-flex',
   inviteUrl: 'https://liff.line.me/1655082627-iMevj93k?invite=abc',
   publicBaseUrl: 'https://staging.example',
 }
@@ -16,10 +16,10 @@ describe('AI Personality share card (LINE Flex)', () => {
   it('shows the player, their type card and one clear call to action', () => {
     const message = buildShareInviteFlex({ ...base, displayName: 'WaitinChen', pictureUrl: 'https://profile.line-scdn.net/abc' })
     expect(message.type).toBe('flex')
-    expect(message.altText).toBe('WaitinChen 的 AI 人格是 ENFP 水獺，你也來測測看')
+    expect(message.altText).toBe('WaitinChen 的 AI 人格是水獺・機會連結者，你也來測測看')
     const nodes = flat(message.contents)
     const images = nodes.filter((node) => node.type === 'image').map((node) => node.url)
-    expect(images).toEqual([`https://staging.example${AIEQ_ANIMALS.ENFP.shareCardPath}`, 'https://profile.line-scdn.net/abc'])
+    expect(images).toEqual([`https://staging.example${AIEQ_ANIMALS['out-idea-feel-flex'].shareCardPath}`, 'https://profile.line-scdn.net/abc'])
     expect(nodes.some((node) => node.type === 'text' && node.text === 'WaitinChen')).toBe(true)
     const buttons = nodes.filter((node) => node.type === 'button')
     expect(buttons).toHaveLength(1)

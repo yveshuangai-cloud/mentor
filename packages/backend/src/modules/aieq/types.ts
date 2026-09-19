@@ -1,4 +1,6 @@
-export const MBTI_DIMENSIONS = ['EI', 'SN', 'TF', 'JP'] as const
+// Four preference axes, named in this product's own vocabulary. The scoring maths is unchanged;
+// only the naming is ours, so nothing here leans on another instrument's terminology.
+export const PREFERENCE_AXES = ['energy', 'input', 'decide', 'action'] as const
 export const AIEQ_DIMENSIONS = [
   'ai_collaboration',
   'transition_speed',
@@ -8,9 +10,9 @@ export const AIEQ_DIMENSIONS = [
   'continuous_learning',
 ] as const
 
-export type MbtiDimension = (typeof MBTI_DIMENSIONS)[number]
+export type AxisId = (typeof PREFERENCE_AXES)[number]
 export type AieqDimension = (typeof AIEQ_DIMENSIONS)[number]
-export type ScoreDimension = MbtiDimension | AieqDimension
+export type ScoreDimension = AxisId | AieqDimension
 
 export interface QuestionOption {
   id: string
@@ -81,11 +83,14 @@ export interface DimensionScore {
   observedWeight: number
 }
 
-export interface MbtiPreferenceResult extends DimensionScore {
-  dimension: MbtiDimension
-  left: string
-  right: string
-  preference: string
+export interface AxisResult extends DimensionScore {
+  dimension: AxisId
+  /** Plain-language name of the axis, e.g. 能量來源. */
+  axisName: string
+  /** Machine key of the leaning pole, e.g. 'out'; 'unknown' when there is no evidence. */
+  pole: string
+  /** Plain-language name of the leaning pole, e.g. 向外. */
+  poleName: string
   strength: number
 }
 
@@ -95,8 +100,9 @@ export interface AieqAbilityResult extends DimensionScore {
 
 export interface AssessmentResult {
   instrumentVersion: string
-  preferenceCode: string
-  mbtiPreferences: Record<MbtiDimension, MbtiPreferenceResult>
+  /** Internal key for the 16 combinations, e.g. 'out-idea-logic-flex'. Never shown to players. */
+  typeKey: string
+  axes: Record<AxisId, AxisResult>
   aieqAbilities: Record<AieqDimension, AieqAbilityResult>
   overallConfidence: number
   disclaimer: string

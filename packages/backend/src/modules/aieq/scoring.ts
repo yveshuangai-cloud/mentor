@@ -1,23 +1,24 @@
 import { AIEQ_QUESTIONS } from './questions.js'
 import {
   AIEQ_DIMENSIONS,
-  MBTI_DIMENSIONS,
+  PREFERENCE_AXES,
   type AieqAbilityResult,
   type AieqDimension,
   type AieqQuestion,
   type AieqSession,
   type AssessmentResult,
   type DimensionScore,
-  type MbtiDimension,
-  type MbtiPreferenceResult,
+  type AxisId,
+  type AxisResult,
   type ScoreDimension,
 } from './types.js'
 
-const MBTI_POLES: Record<MbtiDimension, { left: string; right: string }> = {
-  EI: { left: 'E', right: 'I' },
-  SN: { left: 'S', right: 'N' },
-  TF: { left: 'T', right: 'F' },
-  JP: { left: 'J', right: 'P' },
+// Each axis runs between two poles described in plain Chinese. A negative balance leans left, a positive one right.
+const AXIS_POLES: Record<AxisId, { name: string; left: { key: string; name: string }; right: { key: string; name: string } }> = {
+  energy: { name: '能量來源', left: { key: 'out', name: '向外' }, right: { key: 'in', name: '向內' } },
+  input: { name: '接收資訊', left: { key: 'real', name: '務實' }, right: { key: 'idea', name: '想像' } },
+  decide: { name: '做決定', left: { key: 'logic', name: '邏輯' }, right: { key: 'feel', name: '感受' } },
+  action: { name: '行動方式', left: { key: 'plan', name: '規劃' }, right: { key: 'flex', name: '彈性' } },
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -81,13 +82,13 @@ function dimensionScore(
   }
 }
 
-function mbtiResult(
-  dimension: MbtiDimension,
+function axisResult(
+  dimension: AxisId,
   session: AieqSession,
   questions: readonly AieqQuestion[],
-): MbtiPreferenceResult {
+): AxisResult {
   const base = dimensionScore(dimension, session, questions)
-  const poles = MBTI_POLES[dimension]
+  const poles = AXIS_POLES[dimension]
   const signedScore = questions.reduce((total, question) => {
     const answer = session.answers[question.id]
     const selected = answer?.optionId
@@ -96,12 +97,15 @@ function mbtiResult(
     return total + (selected?.evidence[dimension] ?? 0) * (answer?.interpretationConfidence ?? 0)
   }, 0)
   const clarity = round(clamp(Math.abs(signedScore) / Math.max(availableWeight(dimension, questions), 1), 0, 1))
+  const leaning = base.balance >= 0 ? poles.right : poles.left
+  const decided = base.evidenceCount > 0
   return {
     ...base,
     dimension,
-    ...poles,
+    axisName: poles.name,
     confidence: clarity,
-    preference: base.evidenceCount === 0 ? 'X' : base.balance >= 0 ? poles.right : poles.left,
+    pole: decided ? leaning.key : 'unknown',
+    poleName: decided ? leaning.name : '還看不出來',
     strength: round(clarity * 100),
   }
 }
@@ -110,9 +114,9 @@ export function scoreAssessment(
   session: AieqSession,
   questions: readonly AieqQuestion[] = AIEQ_QUESTIONS,
 ): AssessmentResult {
-  const mbtiPreferences = Object.fromEntries(
-    MBTI_DIMENSIONS.map((dimension) => [dimension, mbtiResult(dimension, session, questions)]),
-  ) as Record<MbtiDimension, MbtiPreferenceResult>
+  const axes = Object.fromEntries(
+    PREFERENCE_AXES.map((dimension) => [dimension, axisResult(dimension, session, questions)]),
+  ) as Record<AxisId, AxisResult>
 
   const aieqAbilities = Object.fromEntries(
     AIEQ_DIMENSIONS.map((dimension) => [
@@ -121,7 +125,7 @@ export function scoreAssessment(
     ]),
   ) as Record<AieqDimension, AieqAbilityResult>
 
-  const allScores = Object.values(mbtiPreferences)
+  const allScores = Object.values(axes)
   const overallConfidence =
     allScores.length === 0
       ? 0
@@ -129,11 +133,10 @@ export function scoreAssessment(
 
   return {
     instrumentVersion: session.instrumentVersion,
-    preferenceCode: MBTI_DIMENSIONS.map((dimension) => mbtiPreferences[dimension].preference).join(''),
-    mbtiPreferences,
+    typeKey: PREFERENCE_AXES.map((dimension) => axes[dimension].pole).join('-'),
+    axes,
     aieqAbilities,
     overallConfidence,
-    disclaimer:
-      'AI 人格誌是參考四組人格偏好的 AI 情境快篩，非心理診斷，也不是官方 MBTI® 測驗。',
+    disclaimer: 'AI 人格誌是描述你目前與 AI 相處傾向的情境快篩，不是心理診斷，也不評量能力高低。',
   }
 }

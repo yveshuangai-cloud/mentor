@@ -41,7 +41,7 @@ const teamFeedbackSchema = z.object({
   spot: z.string().regex(TEAM_FEEDBACK_SPOT),
   verdict: z.enum(TEAM_FEEDBACK_VERDICTS),
   comment: z.string().max(1000).optional(),
-  typeCode: z.string().regex(/^[EI][SN][TF][JP]$/).optional(),
+  typeCode: z.string().regex(/^[a-z]+(?:-[a-z]+){3}$/).optional(),
   sessionId: z.string().max(80).optional(),
 })
 
@@ -72,7 +72,7 @@ function present(session: Awaited<ReturnType<typeof findOrCreateSession>>) {
       personalizationConsent: session.personalizationConsent,
     },
     question,
-    result: result ? { ...result, report: buildResultReport(result), animal: animalForCode(result.preferenceCode) } : null,
+    result: result ? { ...result, report: buildResultReport(result), animal: animalForCode(result.typeKey) } : null,
   }
 }
 

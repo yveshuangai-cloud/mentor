@@ -63,13 +63,13 @@ describe('team feedback tag', () => {
     const server = await app()
     const res = await server.inject({
       method: 'POST', url: '/api/aieq/team-feedback', headers: { ...auth, 'user-agent': 'Line/14.0 iPhone' },
-      payload: { spot: 'question:q03_ai_image', verdict: 'issue', comment: '第三題的 B 太長', typeCode: 'ENTP', sessionId: 'sess-1' },
+      payload: { spot: 'question:q03_ai_image', verdict: 'issue', comment: '第三題的 B 太長', typeCode: 'out-idea-logic-flex', sessionId: 'sess-1' },
     })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({ ok: true, id: 1, createdAt: '2026-09-18T12:00:00.000Z' })
     expect(recordTeamFeedback).toHaveBeenCalledWith(
       expect.objectContaining({ lineUserId: 'U-tester', displayName: '測試河狸', pictureUrl: 'https://profile.line-scdn.net/x' }),
-      { spot: 'question:q03_ai_image', verdict: 'issue', comment: '第三題的 B 太長', typeCode: 'ENTP', sessionId: 'sess-1', userAgent: 'Line/14.0 iPhone' },
+      { spot: 'question:q03_ai_image', verdict: 'issue', comment: '第三題的 B 太長', typeCode: 'out-idea-logic-flex', sessionId: 'sess-1', userAgent: 'Line/14.0 iPhone' },
     )
   })
 

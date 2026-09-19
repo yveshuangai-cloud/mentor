@@ -17,14 +17,14 @@ describe('AI Personality scoring contract', () => {
       question.options.map((option) => [option.id, option.evidence]),
     ])
     expect(contract).toEqual([
-      ['q01_ai_trend', ['EI'], [['try', { EI: -0.5 }], ['natural', { EI: -0.125 }], ['observe', { EI: 0.5 }]]],
-      ['q02_ai_copy', ['SN'], [['angle', { SN: 3 }], ['feeling', { SN: -0.75 }], ['logic', { SN: -3 }]]],
-      ['q03_ai_image', ['SN'], [['scroll', { SN: -0.5 }], ['story', { SN: 2 }], ['flaw', { SN: -2 }]]],
-      ['q04_ai_blocked', ['TF'], [['disappointed', { TF: 3 }], ['retry', { TF: -3 }], ['switch', { TF: -0.75 }]]],
-      ['q05_ai_slides', ['TF'], [['usable', { TF: -0.5 }], ['warmth', { TF: 2 }], ['error', { TF: -2 }]]],
-      ['q06_ai_learning', ['EI'], [['docs', { EI: 2.5 }], ['wait', { EI: -0.25 }], ['discuss', { EI: -2.5 }]]],
-      ['q07_ai_habit', ['JP'], [['spontaneous', { JP: 2 }], ['forget', { JP: -0.5 }], ['template', { JP: -2 }]]],
-      ['q08_ai_options', ['JP'], [['pick', { JP: -3 }], ['more', { JP: 3 }], ['stash', { JP: -0.75 }]]],
+      ['q01_ai_trend', ['energy'], [['try', { energy: -0.5 }], ['natural', { energy: -0.125 }], ['observe', { energy: 0.5 }]]],
+      ['q02_ai_copy', ['input'], [['angle', { input: 3 }], ['feeling', { input: -0.75 }], ['logic', { input: -3 }]]],
+      ['q03_ai_image', ['input'], [['scroll', { input: -0.5 }], ['story', { input: 2 }], ['flaw', { input: -2 }]]],
+      ['q04_ai_blocked', ['decide'], [['disappointed', { decide: 3 }], ['retry', { decide: -3 }], ['switch', { decide: -0.75 }]]],
+      ['q05_ai_slides', ['decide'], [['usable', { decide: -0.5 }], ['warmth', { decide: 2 }], ['error', { decide: -2 }]]],
+      ['q06_ai_learning', ['energy'], [['docs', { energy: 2.5 }], ['wait', { energy: -0.25 }], ['discuss', { energy: -2.5 }]]],
+      ['q07_ai_habit', ['action'], [['spontaneous', { action: 2 }], ['forget', { action: -0.5 }], ['template', { action: -2 }]]],
+      ['q08_ai_options', ['action'], [['pick', { action: -3 }], ['more', { action: 3 }], ['stash', { action: -0.75 }]]],
     ])
   })
 

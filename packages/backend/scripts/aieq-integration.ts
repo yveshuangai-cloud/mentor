@@ -184,7 +184,7 @@ try {
   }
   assert.equal(legacy.status, 'completed', 'seven answers complete a 1.0-7q session')
   await confirmProfile(legacyUser.rows[0].id, legacyId, { visibleToFriends: false, personalizationConsent: false })
-  assert.equal((await getProfile(legacyUser.rows[0].id))?.type_code?.length, 4)
+  assert.match(String((await getProfile(legacyUser.rows[0].id))?.type_code), /^(out|in)-(real|idea)-(logic|feel)-(plan|flex)$/)
   await deleteAieqData(legacyUser.rows[0].id)
 
   // 團隊回報小標籤: the reporter's LINE identity is kept, replay/delete of quiz data leaves the notes alone.

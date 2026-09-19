@@ -27,18 +27,18 @@ describe('LIFF pure helpers (aieq-core.js)', () => {
   })
 
   it('describes a tendency honestly according to evidence and strength', () => {
-    const at = (strength: number, evidenceCount = 2, preference = 'E') => core.tendency({ strength, evidenceCount, preference })
-    expect(at(100)).toBe('很明顯偏 E')
-    expect(at(67)).toBe('很明顯偏 E')
-    expect(at(50)).toBe('比較偏 E')
-    expect(at(20)).toBe('兩邊都像，稍微偏 E')
-    expect(at(100, 1, 'P')).toBe('這次偏 P（只有一題，僅供參考）')
-    expect(at(100, 0, 'X')).toBe('這次沒有足夠的作答可以判斷')
+    const at = (strength: number, evidenceCount = 2, poleName = '向外') => core.tendency({ strength, evidenceCount, poleName })
+    expect(at(100)).toBe('很明顯偏 向外')
+    expect(at(67)).toBe('很明顯偏 向外')
+    expect(at(50)).toBe('比較偏 向外')
+    expect(at(20)).toBe('兩邊都像，稍微偏 向外')
+    expect(at(100, 1, '彈性')).toBe('這次偏 彈性（只有一題，僅供參考）')
+    expect(at(100, 0, '還看不出來')).toBe('這次沒有足夠的作答可以判斷')
     expect(at(100, 2, '<b>')).toBe('很明顯偏 &lt;b&gt;')
   })
 
   it('draws the radar collapsed at the centre with targets that stay inside the chart', () => {
-    const axes = [{ strength: 100, preference: 'E' }, { strength: 50, preference: 'S' }, { strength: 0, preference: 'T' }, { strength: 20, preference: 'J' }]
+    const axes = [{ strength: 100, axisName: '能量來源' }, { strength: 50, axisName: '接收資訊' }, { strength: 0, axisName: '做決定' }, { strength: 20, axisName: '行動方式' }]
     const svg = core.radarChart(axes) as string
     expect(svg).toContain('points="160,150 160,150 160,150 160,150"')
     const target = /data-target="([^"]+)"/.exec(svg)![1].split(' ').map((p) => p.split(',').map(Number))
@@ -47,8 +47,10 @@ describe('LIFF pure helpers (aieq-core.js)', () => {
     expect(target[2]).toEqual([160, 172])         // 0% still sits min 22 below the centre so the shape never vanishes
     for (const [x, y] of target) { expect(x).toBeGreaterThanOrEqual(56); expect(x).toBeLessThanOrEqual(264); expect(y).toBeGreaterThanOrEqual(46); expect(y).toBeLessThanOrEqual(254) }
     expect((svg.match(/<circle class="radar-dot" cx="160" cy="150"/g) ?? []).length).toBe(4)
-    expect(svg).toContain('E · 能量來源')
-    expect(svg).toContain('J · 行動方式')
+    expect(svg).toContain('能量來源')
+    expect(svg).toContain('行動方式')
+    // No borrowed letters reach the chart.
+    expect(svg).not.toMatch(/>[EISNTFJP] ·/)
   })
 
   it('reads an invite token from a direct link and from a LIFF-wrapped link', () => {

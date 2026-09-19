@@ -201,8 +201,8 @@ export async function confirmProfile(userId: number, sessionId: string, options:
     const session = await loadWith(client, sessionId, userId, true)
     if (!session || session.status !== 'completed') throw new Error('completed_session_required')
     const result = scoreAssessment(session, questionsFor(session.instrumentVersion))
-    if (result.preferenceCode.includes('X')) throw new Error('insufficient_preference_evidence')
-    const animal = animalForCode(result.preferenceCode)
+    if (result.typeKey.includes('unknown')) throw new Error('insufficient_preference_evidence')
+    const animal = animalForCode(result.typeKey)
     const pendingInvite = await client.query(
       `SELECT 1 FROM aieq_friend_invites
        WHERE claimed_by_user_id=$1 AND status='claimed' AND expires_at>now() LIMIT 1`, [userId],
@@ -215,7 +215,7 @@ export async function confirmProfile(userId: number, sessionId: string, options:
        animal_slug=EXCLUDED.animal_slug,
        visibility=CASE WHEN aieq_profiles.visibility='friends_of_friends' THEN aieq_profiles.visibility ELSE EXCLUDED.visibility END,
        confirmed_at=now(),updated_at=now()`,
-      [userId, sessionId, result.preferenceCode, animal.slug, visibility],
+      [userId, sessionId, result.typeKey, animal.slug, visibility],
     )
     await client.query(
       `UPDATE aieq_sessions SET personalization_consent=$2,
@@ -376,7 +376,7 @@ export interface FunnelStats {
   invitesPending: number
   invitesAccepted: number
   friendships: number
-  types: Array<{ typeCode: string; count: number }>
+  types: Array<{ name: string; count: number }>
   days: Array<{ day: string; started: number; completed: number }>
 }
 
@@ -415,7 +415,7 @@ export async function getFunnelStats(): Promise<FunnelStats> {
     invitesPending: n('invites_pending'),
     invitesAccepted: n('invites_accepted'),
     friendships: n('friendships'),
-    types: types.rows.map((row) => ({ typeCode: row.type_code, count: Number(row.count) })),
+    types: types.rows.map((row) => ({ name: animalForCode(row.type_code).name, count: Number(row.count) })),
     days: days.rows.map((row) => ({ day: row.day, started: Number(row.started), completed: Number(row.completed) })),
   }
 }

@@ -1,6 +1,5 @@
-import type { AssessmentResult, MbtiDimension } from './types.js'
-
-const AXIS_LABELS: Record<MbtiDimension, string> = { EI: 'E / I', SN: 'S / N', TF: 'T / F', JP: 'J / P' }
+import { animalForCode } from './catalog.js'
+import type { AssessmentResult } from './types.js'
 
 export interface ResultReportPrototype {
   title: string
@@ -13,20 +12,20 @@ export interface ResultReportPrototype {
 }
 
 export function buildResultReport(result: AssessmentResult): ResultReportPrototype {
-  const ranked = Object.values(result.mbtiPreferences).sort((a, b) => b.strength - a.strength)
+  const animal = animalForCode(result.typeKey)
+  const ranked = Object.values(result.axes).sort((a, b) => b.strength - a.strength)
   const strongestSignals = ranked.slice(0, 2).map(
-    (axis) => `${AXIS_LABELS[axis.dimension]}：${axis.preference}，清晰度 ${Math.round(axis.strength)}%`,
+    (axis) => `${axis.axisName}：偏${axis.poleName}，清晰度 ${Math.round(axis.strength)}%`,
   )
-  const growthExperiments = ranked.slice(-2).map((axis) => {
-    const label = AXIS_LABELS[axis.dimension]
-    return `${label} 接近邊界時，保留「目前傾向」的說法，並從日常行為繼續觀察。`
-  })
+  const growthExperiments = ranked.slice(-2).map(
+    (axis) => `${axis.axisName} 兩邊都很接近時，就當成「目前的傾向」，再從日常行為慢慢觀察。`,
+  )
 
   const confidencePercent = Math.round(result.overallConfidence * 100)
   return {
-    title: `你的 AI 人格誌：${result.preferenceCode}`,
+    title: `你的 AI 人格誌：${animal.name}・${animal.title}`,
     summary: '這份結果描述你目前使用 AI 的偏好，不代表能力高低或固定命運。',
-    preferenceNote: `四組人格偏好代碼為 ${result.preferenceCode}；各軸需分開閱讀清晰度。`,
+    preferenceNote: `四種選擇傾向要分開讀，每一條的清晰度不一樣。`,
     strongestSignals,
     growthExperiments,
     confidenceNote: `本次結果信心程度約 ${confidencePercent}%。題數、跳題或跨情境不一致都會影響信心。`,

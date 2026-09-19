@@ -15,7 +15,7 @@ async function answerAll(page: Page, pick = 1) {
     await choices.nth(pick).click()
     await page.waitForTimeout(700)
   }
-  await expect(page.locator('.result-code')).toBeVisible()
+  await expect(page.locator('.result-title')).toBeVisible()
 }
 
 const inFirstScreen = async (page: Page, selector: string) =>
@@ -60,9 +60,9 @@ test('a finished but unconfirmed result survives a reload, then confirm keeps it
   await freshPlayer(page)
   await page.locator('#startBtn').click()
   await answerAll(page)
-  const code = await page.locator('.result-code').innerText()
+  const shown = await page.locator('.result-title').innerText()
   await page.reload()
-  await expect(page.locator('.result-code')).toHaveText(code)
+  await expect(page.locator('.result-title')).toHaveText(shown)
   await page.locator('#confirmBtn').click()
   await expect(page.locator('#resultCard .panel')).toContainText('結果已確認')
   // The app keeps its state in module scope, so read the stored profile back through the API with the same demo identity.

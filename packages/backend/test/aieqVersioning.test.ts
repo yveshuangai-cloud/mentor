@@ -38,7 +38,7 @@ describe('AI Personality instrument versions', () => {
     const legacy = play('ai-personality-1.0-7q', [0, 0, 1, 1, 2, 0, 2])
     expect(legacy.status).toBe('completed')
     const result = scoreAssessment(legacy, questionsFor(legacy.instrumentVersion))
-    expect(result.mbtiPreferences.JP.evidenceCount).toBe(1)
+    expect(result.axes.action.evidenceCount).toBe(1)
     expect(result.instrumentVersion).toBe('ai-personality-1.0-7q')
     // The same seven answers do not complete a current session: q08 is still pending.
     const current = play(INSTRUMENT_VERSION, [0, 0, 1, 1, 2, 0, 2])

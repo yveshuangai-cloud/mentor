@@ -75,7 +75,7 @@ export function buildResultFlex(
   publicBaseUrl: string,
   resultPageUrl = `${publicBaseUrl}/aieq`,
 ): Record<string, unknown> {
-  const animal = animalForCode(result.preferenceCode)
+  const animal = animalForCode(result.typeKey)
   return {
     type: 'bubble',
     size: 'mega',
@@ -90,15 +90,15 @@ export function buildResultFlex(
     body: {
       type: 'box', layout: 'vertical', spacing: 'md', paddingAll: '20px',
       contents: [
-        { type: 'text', text: result.preferenceCode, size: 'xxl', weight: 'bold', color: '#505158' },
-        { type: 'text', text: `${animal.name}型`, size: 'lg', weight: 'bold', color: '#D95F82' },
+        { type: 'text', text: animal.name, size: 'xxl', weight: 'bold', color: '#505158' },
+        { type: 'text', text: animal.title, size: 'lg', weight: 'bold', color: '#D95F82' },
         { type: 'text', text: animal.strength, wrap: true, color: '#505158' },
         { type: 'text', text: `結果信心程度 ${Math.round(result.overallConfidence * 100)}%`, size: 'sm', color: '#777780' },
         { type: 'button', style: 'primary', color: '#D95F82', action: { type: 'uri', label: '確認結果與看朋友圈', uri: resultPageUrl } },
       ],
     },
     footer: { type: 'box', layout: 'vertical', contents: [
-      { type: 'text', text: '非心理診斷，也不是官方 MBTI® 測驗。', size: 'xs', color: '#777780', wrap: true },
+      { type: 'text', text: '描述目前傾向，非心理診斷，也不評量能力高低。', size: 'xs', color: '#777780', wrap: true },
     ] },
   }
 }
@@ -134,7 +134,7 @@ export function buildShareInviteFlex(input: {
   }
   return {
     type: 'flex',
-    altText: `${name} 的 AI 人格是 ${animal.code} ${animal.name}，你也來測測看`,
+    altText: `${name} 的 AI 人格是${animal.name}・${animal.title}，你也來測測看`,
     contents: {
       type: 'bubble',
       size: 'mega',
@@ -158,7 +158,7 @@ export function buildShareInviteFlex(input: {
         type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '14px',
         contents: [
           { type: 'button', style: 'primary', color: '#FF1785', height: 'sm', action: { type: 'uri', label: '我也來測我的 AI 人格', uri: input.inviteUrl } },
-          { type: 'text', text: '8 個情境・約 1 分鐘｜非心理診斷，也不是官方 MBTI® 測驗', size: 'xxs', color: '#9B9B9B', wrap: true, align: 'center' },
+          { type: 'text', text: '8 個情境・約 1 分鐘｜描述目前傾向，非心理診斷', size: 'xxs', color: '#9B9B9B', wrap: true, align: 'center' },
         ],
       },
     },

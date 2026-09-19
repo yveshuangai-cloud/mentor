@@ -1,4 +1,4 @@
-const CACHE='aieq-shell-v2'
+const CACHE='aieq-shell-v3'
 const SHELL=['/aieq','/aieq-manifest.webmanifest','/aieq/scenes/start/start-exploration-v1.jpg']
 // The worker is registered at "/" but must only touch AI Personality paths; /admin and other apps on this origin pass through untouched.
 const owns=path=>path==='/aieq'||path.startsWith('/aieq/')||path==='/aieq-manifest.webmanifest'

@@ -1,3 +1,4 @@
+import { animalForCode } from './catalog.js'
 import { config } from '../../config.js'
 import type { LineMessage } from '../line.js'
 import { buildResultFlex, buildThreeChoiceFlex } from './flex.js'
@@ -28,7 +29,7 @@ function resultMessages(session: Awaited<ReturnType<typeof findOrCreateSession>>
   const result = scoreAssessment(session, questionsFor(session.instrumentVersion))
   return [{
     type: 'flex',
-    altText: `你的 AIEQ 結果：${result.preferenceCode}`,
+    altText: `你的 AI 人格：${animalForCode(result.typeKey).name}`,
     contents: buildResultFlex(
       result,
       config.publicBaseUrl,
@@ -76,7 +77,7 @@ export async function handleAieqText(input: {
     if (active) return nextMessages(active)
     return [{
       type: 'text',
-      text: 'AI 人格誌會用 8 個 AI 工作情境，在約兩分鐘內整理你的四組行為偏好與六項可發展能力。它不是心理診斷，也不是官方 MBTI® 測驗。想開始時，跟我說「開始 AI 人格誌」。',
+      text: 'AI 人格誌會用 8 個 AI 情境，在約兩分鐘內整理你的四種選擇傾向與六項可發展能力，最後給你一隻代表動物。它描述目前傾向，不是心理診斷，也不評量能力高低。想開始時，跟我說「開始 AI 人格誌」。',
     }]
   }
   const session = await findActiveSession(input.userId)

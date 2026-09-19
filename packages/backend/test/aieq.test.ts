@@ -92,8 +92,8 @@ describe('AIEQ answer state machine', () => {
 
     expect(textEvent.optionId).toBe('try')
     expect(text.answers[question.id].optionId).toBe(card.answers[question.id].optionId)
-    expect(Math.sign(scoreAssessment(text).mbtiPreferences.SN.balance)).toBe(
-      Math.sign(scoreAssessment(card).mbtiPreferences.SN.balance),
+    expect(Math.sign(scoreAssessment(text).axes.input.balance)).toBe(
+      Math.sign(scoreAssessment(card).axes.input.balance),
     )
   })
 
@@ -112,7 +112,7 @@ describe('AIEQ answer state machine', () => {
     expect(event.optionId).toBeUndefined()
     expect(event.interpretationConfidence).toBe(0)
     expect(result.session.answers[question.id].rawText).toContain('專案狀況')
-    expect(scoreAssessment(result.session).mbtiPreferences.SN.evidenceCount).toBe(0)
+    expect(scoreAssessment(result.session).axes.input.evidenceCount).toBe(0)
   })
 
   it('supports uncertain, skip, back, pause, and resume in the same event format', () => {
@@ -191,10 +191,10 @@ describe('AIEQ answer state machine', () => {
 
 describe('AIEQ scoring boundaries', () => {
   it('matches the approved axis coverage and records the new instrument version', () => {
-    expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('EI'))).toHaveLength(2)
-    expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('SN'))).toHaveLength(2)
-    expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('TF'))).toHaveLength(2)
-    expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('JP'))).toHaveLength(2)
+    expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('energy'))).toHaveLength(2)
+    expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('input'))).toHaveLength(2)
+    expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('decide'))).toHaveLength(2)
+    expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('action'))).toHaveLength(2)
     expect(createAieqSession('version-check', NOW).instrumentVersion).toBe('ai-personality-1.1-8q')
   })
 
@@ -211,24 +211,24 @@ describe('AIEQ scoring boundaries', () => {
       ).session
     })
     const result = scoreAssessment(session)
-    expect(result.preferenceCode).toBe('ENTP')
-    expect(result.mbtiPreferences.EI.strength).toBe(25)
-    expect(result.mbtiPreferences.SN.strength).toBe(100)
-    expect(result.mbtiPreferences.TF.strength).toBe(70)
-    expect(result.mbtiPreferences.JP.strength).toBe(100)
+    expect(result.typeKey).toBe('out-idea-logic-flex')
+    expect(result.axes.energy.strength).toBe(25)
+    expect(result.axes.input.strength).toBe(100)
+    expect(result.axes.decide.strength).toBe(70)
+    expect(result.axes.action.strength).toBe(100)
   })
 
-  it('does not derive AI capability from an MBTI preference', () => {
+  it('does not derive AI capability from an preference axis', () => {
     const independentQuestion: AieqQuestion = {
       id: 'independent',
       scenario: '同一個內向偏好的人可能採取不同協作策略。',
       prompt: '你會怎麼做？',
       validation: 'direct',
-      dimensions: ['EI', 'ai_collaboration'],
+      dimensions: ['energy', 'ai_collaboration'],
       options: [
-        { id: 'a', shortLabel: '策略 A', label: '策略 A', evidence: { EI: 1, ai_collaboration: 1 } },
-        { id: 'b', shortLabel: '策略 B', label: '策略 B', evidence: { EI: 1, ai_collaboration: -1 } },
-        { id: 'c', shortLabel: '策略 C', label: '策略 C', evidence: { EI: -1, ai_collaboration: 0 } },
+        { id: 'a', shortLabel: '策略 A', label: '策略 A', evidence: { energy: 1, ai_collaboration: 1 } },
+        { id: 'b', shortLabel: '策略 B', label: '策略 B', evidence: { energy: 1, ai_collaboration: -1 } },
+        { id: 'c', shortLabel: '策略 C', label: '策略 C', evidence: { energy: -1, ai_collaboration: 0 } },
       ],
     }
     const questions = [independentQuestion]
@@ -245,8 +245,9 @@ describe('AIEQ scoring boundaries', () => {
     const resultA = scoreAssessment(sessionA, questions)
     const resultB = scoreAssessment(sessionB, questions)
 
-    expect(resultA.mbtiPreferences.EI.preference).toBe('I')
-    expect(resultB.mbtiPreferences.EI.preference).toBe('I')
+    expect(resultA.axes.energy.pole).toBe('in')
+    expect(resultB.axes.energy.pole).toBe('in')
+    expect(resultA.axes.energy.poleName).toBe('向內')
     expect(resultA.aieqAbilities.ai_collaboration.score).toBe(100)
     expect(resultB.aieqAbilities.ai_collaboration.score).toBe(0)
   })
@@ -262,7 +263,8 @@ describe('AIEQ scoring boundaries', () => {
     const partial = scoreAssessment(partialSession)
 
     expect(complete.overallConfidence).toBeGreaterThan(partial.overallConfidence)
-    expect(complete.disclaimer).toContain('不是官方 MBTI')
+    expect(complete.disclaimer).toContain('不是心理診斷')
+    expect(complete.disclaimer).not.toMatch(/MBTI|Myers/i)
   })
 })
 
@@ -298,7 +300,8 @@ describe('AIEQ presentation prototypes', () => {
     expect(report.strongestSignals).toHaveLength(2)
     expect(report.growthExperiments).toHaveLength(2)
     expect(report.confidenceNote).toContain('信心程度')
-    expect(report.disclaimer).toContain('非心理診斷')
+    expect(report.disclaimer).toContain('不是心理診斷')
+    expect(report.disclaimer).not.toMatch(/MBTI|Myers/i)
     expect(JSON.stringify(report)).not.toMatch(/稀有|高階|低階|淘汰/)
   })
 
@@ -307,8 +310,9 @@ describe('AIEQ presentation prototypes', () => {
     const flex = buildResultFlex(result, 'https://example.test')
     const serialized = JSON.stringify(flex)
     expect(serialized).toContain('https://example.test/aieq')
-    expect(serialized).toContain(result.preferenceCode)
     expect(serialized).toContain('非心理診斷')
+    expect(serialized).not.toMatch(/MBTI|Myers/i)
+    expect(serialized).not.toContain('in-idea-feel-plan')
   })
 
   it('only starts from explicit AIEQ phrases', () => {

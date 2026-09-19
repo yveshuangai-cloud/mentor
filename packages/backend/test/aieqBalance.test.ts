@@ -11,7 +11,7 @@ import {
 // They do not prove the questions measure personality; they prove the weights do not quietly
 // push everyone toward one letter or one animal. Re-run them whenever a weight or question changes.
 
-const AXES = ['EI', 'SN', 'TF', 'JP'] as const
+const AXES = ['energy', 'input', 'decide', 'action'] as const
 type Axis = (typeof AXES)[number]
 
 function score(picks: number[]) {
@@ -62,17 +62,18 @@ describe('AI Personality answer-space balance', () => {
     }
   })
 
-  it('keeps each letter between 40% and 60% of all possible answer sheets', () => {
+  it('keeps each pole between 40% and 60% of all possible answer sheets', () => {
+    const LEFT_POLE: Record<Axis, string> = { energy: 'out', input: 'real', decide: 'logic', action: 'plan' }
     for (const [position, axis] of AXES.entries()) {
-      const left = results.filter((result) => result.preferenceCode[position] === axis[0]).length / results.length
-      expect(left, `${axis[0]} share`).toBeGreaterThanOrEqual(0.4)
-      expect(left, `${axis[0]} share`).toBeLessThanOrEqual(0.6)
+      const left = results.filter((result) => result.typeKey.split('-')[position] === LEFT_POLE[axis]).length / results.length
+      expect(left, `${LEFT_POLE[axis]} share`).toBeGreaterThanOrEqual(0.4)
+      expect(left, `${LEFT_POLE[axis]} share`).toBeLessThanOrEqual(0.6)
     }
   })
 
   it('makes all 16 types reachable without any type crowding out the rest', () => {
     const counts = new Map<string, number>()
-    for (const result of results) counts.set(result.preferenceCode, (counts.get(result.preferenceCode) ?? 0) + 1)
+    for (const result of results) counts.set(result.typeKey, (counts.get(result.typeKey) ?? 0) + 1)
     expect(counts.size).toBe(16)
     const shares = [...counts.values()].map((count) => count / results.length)
     // An even spread is 6.25% each. Seven questions gave 11.4% (ESTJ) down to 2.9% (INFP).
@@ -80,15 +81,15 @@ describe('AI Personality answer-space balance', () => {
     expect(Math.min(...shares)).toBeGreaterThanOrEqual(0.035)
   })
 
-  it('labels a slightly inconsistent J or P person correctly at least 72% of the time', () => {
+  it('labels a slightly inconsistent 規劃 or 彈性 person correctly at least 72% of the time', () => {
     // Per J/P question: 60% choose the option that strongly fits them, 25% the mild one, 15% the opposite.
     // With only q07 this was 85% for J but 60% for P.
-    const items = weights('JP')
-    for (const pole of ['J', 'P'] as const) {
-      const direction = pole === 'P' ? 1 : -1
+    const items = weights('action')
+    for (const pole of ['plan', 'flex'] as const) {
+      const direction = pole === 'flex' ? 1 : -1
       let correct = 0
       const walk = (index: number, probability: number, total: number) => {
-        if (index === items.length) { if ((total >= 0 ? 'P' : 'J') === pole) correct += probability; return }
+        if (index === items.length) { if ((total >= 0 ? 'flex' : 'plan') === pole) correct += probability; return }
         const ranked = [...items[index]].sort((a, b) => direction * b - direction * a)
         walk(index + 1, probability * 0.6, total + ranked[0])
         walk(index + 1, probability * 0.25, total + ranked[1])
