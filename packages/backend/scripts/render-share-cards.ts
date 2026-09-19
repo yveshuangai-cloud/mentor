@@ -59,7 +59,7 @@ function page(animal: (typeof AIEQ_ANIMALS)[string], sceneDataUri: string, logoD
   .edge p{font-size:46px;font-weight:900;line-height:1.35;letter-spacing:-.01em}
   /* The event mark sits where the 2026-09-11 comp put it. Swap the source file for the
      official artwork when it arrives and re-run this script; nothing else has to change. */
-  .event-logo{position:absolute;right:56px;bottom:74px;width:230px}
+  .event-logo{position:absolute;right:56px;bottom:76px;width:238px}
 </style></head><body>
   <img class="scene" src="${sceneDataUri}" alt="">
   <div class="top-scrim"></div><div class="bottom-scrim"></div>
@@ -75,7 +75,7 @@ function page(animal: (typeof AIEQ_ANIMALS)[string], sceneDataUri: string, logoD
 }
 
 const logo = `data:image/png;base64,${(await readFile(
-  join(repoDir, 'assets/aieq/digiasia/digiasia-2026-logo-cropped.png'))).toString('base64')}`
+  join(repoDir, 'assets/aieq/digiasia/digiasia-2026-mark-white.png'))).toString('base64')}`
 
 const browser = await chromium.launch()
 const tab = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 })
