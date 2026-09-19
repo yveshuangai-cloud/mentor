@@ -28,7 +28,7 @@ const H = 1672
 // The portrait circle the overlays fill: centre (773,192), radius 146.
 const AVATAR = { cx: 773, cy: 192, r: 146 }
 
-function page(animal: (typeof AIEQ_ANIMALS)[string], sceneDataUri: string): string {
+function page(animal: (typeof AIEQ_ANIMALS)[string], sceneDataUri: string, logoDataUri: string): string {
   const esc = (t: string) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string))
   return `<!doctype html><html><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -57,6 +57,9 @@ function page(animal: (typeof AIEQ_ANIMALS)[string], sceneDataUri: string): stri
   .edge{position:absolute;left:52px;bottom:96px;right:72px;border-left:7px solid #ff1785;padding-left:26px}
   .edge small{display:block;font-size:26px;font-weight:700;letter-spacing:.22em;color:#cfcfcf;margin-bottom:14px}
   .edge p{font-size:46px;font-weight:900;line-height:1.35;letter-spacing:-.01em}
+  /* The event mark sits where the 2026-09-11 comp put it. Swap the source file for the
+     official artwork when it arrives and re-run this script; nothing else has to change. */
+  .event-logo{position:absolute;right:56px;bottom:74px;width:230px}
 </style></head><body>
   <img class="scene" src="${sceneDataUri}" alt="">
   <div class="top-scrim"></div><div class="bottom-scrim"></div>
@@ -67,8 +70,12 @@ function page(animal: (typeof AIEQ_ANIMALS)[string], sceneDataUri: string): stri
     <div class="tagline">${esc(animal.tagline)}</div>
   </div>
   <div class="edge"><small>自然優勢</small><p>${esc(animal.edge)}</p></div>
+  <img class="event-logo" src="${logoDataUri}" alt="2026 數位亞洲大會">
 </body></html>`
 }
+
+const logo = `data:image/png;base64,${(await readFile(
+  join(repoDir, 'assets/aieq/digiasia/digiasia-2026-logo-cropped.png'))).toString('base64')}`
 
 const browser = await chromium.launch()
 const tab = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 })
@@ -76,7 +83,7 @@ let n = 0
 for (const animal of Object.values(AIEQ_ANIMALS)) {
   const scenePath = join(repoDir, animal.resultScenePath.replace('/aieq/scenes/', 'assets/ai-personality/scenes/'))
   const scene = `data:image/jpeg;base64,${(await readFile(scenePath)).toString('base64')}`
-  await tab.setContent(page(animal, scene), { waitUntil: 'load' })
+  await tab.setContent(page(animal, scene, logo), { waitUntil: 'load' })
   await tab.evaluate(() => document.fonts.ready)
   await tab.waitForTimeout(220)
   const file = animal.shareCardPath.split('/').pop() as string
