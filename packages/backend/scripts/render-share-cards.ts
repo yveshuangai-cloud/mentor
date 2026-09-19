@@ -54,9 +54,10 @@ function page(animal: (typeof AIEQ_ANIMALS)[string], sceneDataUri: string, logoD
   .code{margin-top:16px;font-family:"IBM Plex Mono",monospace;font-weight:400;font-size:40px;
         letter-spacing:.2em;color:#8f8f97}
   .tagline{margin-top:16px;font-size:34px;font-weight:700;line-height:1.45;color:#41ff78;letter-spacing:.01em}
-  .edge{position:absolute;left:52px;bottom:96px;right:72px;border-left:7px solid #ff1785;padding-left:26px}
+  /* Stops short of the event mark: 941 - 318 = 623, and the mark starts at 647. */
+  .edge{position:absolute;left:52px;bottom:96px;right:318px;border-left:7px solid #ff1785;padding-left:26px}
   .edge small{display:block;font-size:26px;font-weight:700;letter-spacing:.22em;color:#cfcfcf;margin-bottom:14px}
-  .edge p{font-size:46px;font-weight:900;line-height:1.35;letter-spacing:-.01em}
+  .edge p{font-size:40px;font-weight:900;line-height:1.34;letter-spacing:-.01em}
   /* The event mark sits where the 2026-09-11 comp put it. Swap the source file for the
      official artwork when it arrives and re-run this script; nothing else has to change. */
   .event-logo{position:absolute;right:56px;bottom:76px;width:238px}
@@ -87,9 +88,21 @@ for (const animal of Object.values(AIEQ_ANIMALS)) {
   await tab.evaluate(() => document.fonts.ready)
   await tab.waitForTimeout(220)
   const file = animal.shareCardPath.split('/').pop() as string
+  // A long closing line used to run under the event mark; refuse to ship a card where it still does.
+  const clearance = await tab.evaluate(() => {
+    const text = document.querySelector('.edge p') as HTMLElement
+    const mark = document.querySelector('.event-logo') as HTMLElement
+    const range = document.createRange()
+    range.selectNodeContents(text)
+    const lines = [...range.getClientRects()]
+    const widest = Math.max(...lines.map((r) => r.right))
+    const m = mark.getBoundingClientRect()
+    return { gap: Math.round(m.left - widest), lines: lines.length }
+  })
+  if (clearance.gap < 16) throw new Error(`${file}: 「${animal.edge}」 comes within ${clearance.gap}px of the event mark`)
   await writeFile(join(outDir, file), await tab.screenshot({ type: 'jpeg', quality: 88 }))
   n += 1
-  console.log(`  ${file}  ${animal.name}・${animal.title}  ${animal.displayCode}`)
+  console.log(`  ${file.padEnd(16)} ${animal.edge.padEnd(14)} ${clearance.lines} 行・距標誌 ${clearance.gap}px`)
 }
 await browser.close()
 console.log(`\n${n} 張分享卡已重出（941x1672，頭像圈留空）`)
