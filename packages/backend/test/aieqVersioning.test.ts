@@ -30,7 +30,9 @@ function play(version: string, picks: number[]): AieqSession {
 describe('AI Personality instrument versions', () => {
   it('stamps new sessions with the current version and keeps every historical bank', () => {
     expect(createAieqSession('x', NOW).instrumentVersion).toBe(INSTRUMENT_VERSION)
-    expect(Object.keys(QUESTION_BANKS)).toEqual(['ai-personality-1.0-7q', 'ai-personality-1.1-8q'])
+    expect(Object.keys(QUESTION_BANKS)).toEqual([
+      'ai-personality-1.0-7q', 'ai-personality-1.1-8q', 'ai-personality-2.0-8q',
+    ])
     expect(questionsFor(INSTRUMENT_VERSION)).toBe(AIEQ_QUESTIONS)
   })
 
@@ -40,19 +42,24 @@ describe('AI Personality instrument versions', () => {
     const result = scoreAssessment(legacy, questionsFor(legacy.instrumentVersion))
     expect(result.axes.action.evidenceCount).toBe(1)
     expect(result.instrumentVersion).toBe('ai-personality-1.0-7q')
-    // The same seven answers do not complete a current session: q08 is still pending.
+    // The same seven answers do not complete a current session: an eighth item is still pending.
     const current = play(INSTRUMENT_VERSION, [0, 0, 1, 1, 2, 0, 2])
     expect(current.status).toBe('in_progress')
     expect(current.currentQuestionIndex).toBe(7)
   })
 
-  it('freezes the legacy bank as the first seven items of the current one', () => {
-    const legacy = questionsFor('ai-personality-1.0-7q')
-    expect(legacy).toHaveLength(7)
-    legacy.forEach((question, index) => {
-      expect(question.id).toBe(AIEQ_QUESTIONS[index].id)
-      expect(question.options.map((o) => [o.id, o.evidence])).toEqual(AIEQ_QUESTIONS[index].options.map((o) => [o.id, o.evidence]))
+  it('freezes the two everyday banks against each other, apart from the current one', () => {
+    const seven = questionsFor('ai-personality-1.0-7q')
+    const eight = questionsFor('ai-personality-1.1-8q')
+    expect(seven).toHaveLength(7)
+    expect(eight).toHaveLength(8)
+    seven.forEach((question, index) => {
+      expect(question.id).toBe(eight[index].id)
+      expect(question.options.map((o) => [o.id, o.evidence])).toEqual(eight[index].options.map((o) => [o.id, o.evidence]))
     })
+    // The workplace bank replaced them, so it shares no question id with either.
+    const older = new Set(eight.map((q) => q.id))
+    for (const question of AIEQ_QUESTIONS) expect(older.has(question.id), question.id).toBe(false)
   })
 
   it('refuses to score an unknown version rather than guessing a bank', () => {

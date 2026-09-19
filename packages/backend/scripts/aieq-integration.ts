@@ -39,7 +39,9 @@ try {
 
   const { autoMigrate, platformQuery, pool } = await import('../src/db/index.js')
   closePool = () => pool.end()
-  const { AIEQ_QUESTIONS } = await import('../src/modules/aieq/questions.js')
+  const { AIEQ_QUESTIONS, questionsFor } = await import('../src/modules/aieq/questions.js')
+  // The 1.0 session below was answered under the everyday bank, which is not the live one any more.
+  const LEGACY_BANK = questionsFor('ai-personality-1.0-7q')
   const { listMyTeamFeedback, recordTeamFeedback, summarizeTeamFeedback } = await import('../src/modules/aieq/teamFeedback.js')
   const {
     appendEvent,
@@ -178,7 +180,7 @@ try {
   for (let index = 0; index < 7; index++) {
     legacy = (await appendEvent(legacyUser.rows[0].id, {
       eventId: `legacy-${index}`, sessionId: legacyId, source: 'card', kind: 'answer',
-      questionId: AIEQ_QUESTIONS[index].id, optionId: AIEQ_QUESTIONS[index].options[0].id,
+      questionId: LEGACY_BANK[index].id, optionId: LEGACY_BANK[index].options[0].id,
       occurredAt: new Date(Date.now() + 300 + index).toISOString(), interpretationConfidence: 1,
     })).session
   }

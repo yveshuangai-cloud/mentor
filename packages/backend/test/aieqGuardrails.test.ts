@@ -10,6 +10,8 @@ const assetsDir = resolve(import.meta.dirname, '../../../assets/aieq')
 describe('AI Personality scoring contract', () => {
   // Copy may be rewritten freely. Question ids, option ids, order, dimensions and evidence weights may not:
   // changing any of them silently re-scores every stored answer. Update this table only with a product decision.
+  // Freezes the live bank (ai-personality-2.0-8q). Weights come from the original classification
+  // spec; q07 and q08 were eased off 1.00 on the planner's instruction so same-axis pairs cannot cancel.
   it('keeps question ids, option ids, order and evidence weights frozen', () => {
     const contract = AIEQ_QUESTIONS.map((question) => [
       question.id,
@@ -17,14 +19,14 @@ describe('AI Personality scoring contract', () => {
       question.options.map((option) => [option.id, option.evidence]),
     ])
     expect(contract).toEqual([
-      ['q01_ai_trend', ['energy'], [['try', { energy: -0.5 }], ['natural', { energy: -0.125 }], ['observe', { energy: 0.5 }]]],
-      ['q02_ai_copy', ['input'], [['angle', { input: 3 }], ['feeling', { input: -0.75 }], ['logic', { input: -3 }]]],
-      ['q03_ai_image', ['input'], [['scroll', { input: -0.5 }], ['story', { input: 2 }], ['flaw', { input: -2 }]]],
-      ['q04_ai_blocked', ['decide'], [['disappointed', { decide: 3 }], ['retry', { decide: -3 }], ['switch', { decide: -0.75 }]]],
-      ['q05_ai_slides', ['decide'], [['usable', { decide: -0.5 }], ['warmth', { decide: 2 }], ['error', { decide: -2 }]]],
-      ['q06_ai_learning', ['energy'], [['docs', { energy: 2.5 }], ['wait', { energy: -0.25 }], ['discuss', { energy: -2.5 }]]],
-      ['q07_ai_habit', ['action'], [['spontaneous', { action: 2 }], ['forget', { action: -0.5 }], ['template', { action: -2 }]]],
-      ['q08_ai_options', ['action'], [['pick', { action: -3 }], ['more', { action: 3 }], ['stash', { action: -0.75 }]]],
+      ['q01_new_tool', ['input'], [['experiment', { input: 0.7, transition_speed: 1, ambiguity_tolerance: 0.7, agency: 0.8 }], ['manual', { input: -0.8, transition_speed: -0.25, ambiguity_tolerance: -0.5, continuous_learning: 0.5 }], ['goal', { input: -0.2, ai_collaboration: 0.6, verification: 0.6, agency: 0.35 }]]],
+      ['q02_ai_output', ['decide'], [['verify', { decide: -0.8, verification: 1, agency: 0.55 }], ['review', { decide: 0.7, verification: 0.75, ai_collaboration: 0.8 }], ['submit', { decide: -0.1, verification: -1, agency: -0.35 }]]],
+      ['q03_team_trial', ['energy'], [['gather', { energy: -1, ai_collaboration: 1, agency: 0.8 }], ['prototype', { energy: 1, ai_collaboration: 0.25, agency: 0.9 }], ['clarify', { energy: -0.35, ai_collaboration: 0.85, verification: 0.4 }]]],
+      ['q04_plan_breaks', ['action'], [['replan', { action: -1, transition_speed: 0.65, ambiguity_tolerance: -0.25, agency: 0.7 }], ['alternatives', { action: 1, transition_speed: 1, ambiguity_tolerance: 0.9 }], ['hold', { action: -0.15, transition_speed: -0.9, ambiguity_tolerance: -0.8, agency: -0.7 }]]],
+      ['q05_failed_automation', ['input'], [['debug', { input: -1, verification: 1, continuous_learning: 0.7 }], ['rethink', { input: 1, transition_speed: 0.6, ambiguity_tolerance: 0.6, continuous_learning: 0.55 }], ['revert', { input: -0.35, transition_speed: -0.55, continuous_learning: -0.8 }]]],
+      ['q06_team_disagrees', ['decide'], [['feelings', { decide: 1, ai_collaboration: 1, verification: 0.3 }], ['standard', { decide: -1, ai_collaboration: 0.65, verification: 1 }], ['escalate', { decide: -0.25, ai_collaboration: -0.3, agency: -0.35 }]]],
+      ['q07_learning', ['energy'], [['squad', { energy: -0.8, continuous_learning: 0.9, ai_collaboration: 1, agency: 0.55 }], ['notes', { energy: 0.85, continuous_learning: 1, agency: 0.8 }], ['course', { energy: 0.1, continuous_learning: -0.8, agency: -0.75 }]]],
+      ['q08_vague_request', ['action'], [['scope', { action: -0.85, ambiguity_tolerance: -0.25, agency: 0.65, verification: 0.5 }], ['draft', { action: 0.8, ambiguity_tolerance: 1, agency: 1, transition_speed: 0.75 }], ['defer', { action: -0.25, ambiguity_tolerance: -0.85, agency: -1 }]]],
     ])
   })
 
@@ -35,6 +37,9 @@ describe('AI Personality scoring contract', () => {
       for (const option of question.options) {
         // LINE rejects Flex button labels longer than 40 characters.
         expect([...option.shortLabel].length, `${question.id}/${option.id} headline`).toBeLessThanOrEqual(40)
+        // A headline past 14 characters wraps to a second line at 375px, which pushes option C off the
+        // first screen. The association asked for all three to be visible without scrolling.
+        expect([...option.shortLabel].length, `${question.id}/${option.id} wraps on a 375px screen`).toBeLessThanOrEqual(14)
         expect(option.label, `${question.id}/${option.id} detail must add information`).not.toBe(option.shortLabel)
       }
     }

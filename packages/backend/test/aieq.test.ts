@@ -12,11 +12,15 @@ import {
   scoreAssessment,
   isAieqInfoText,
   isAieqStartText,
+  questionsFor,
   transitionAieqSession,
   type AieqQuestion,
   type AieqSession,
   type AnswerEvent,
 } from '../src/modules/aieq/index.js'
+
+// The everyday bank the workplace one replaced. Its sessions still exist, so it keeps its own coverage.
+const LEGACY = questionsFor('ai-personality-1.1-8q')
 
 const NOW = '2026-08-09T10:00:00.000Z'
 
@@ -72,14 +76,14 @@ describe('AIEQ answer state machine', () => {
   })
 
   it('normalizes card and unambiguous natural-language answers to the same option', () => {
-    const question = AIEQ_QUESTIONS[0]
+    const question = LEGACY[0]
     const cardSession = createAieqSession('card-session', NOW)
     const textSession = createAieqSession('text-session', NOW)
 
     const card = transitionAieqSession(
       cardSession,
       cardAnswer(cardSession.id, 'card-1', question.id, question.options[0].id),
-      AIEQ_QUESTIONS,
+      LEGACY,
     ).session
     const textEvent = freeTextToAnswerEvent({
       eventId: 'text-1',
@@ -88,7 +92,7 @@ describe('AIEQ answer state machine', () => {
       rawText: '我很期待去嘗試。',
       occurredAt: NOW,
     })
-    const text = transitionAieqSession(textSession, textEvent, AIEQ_QUESTIONS).session
+    const text = transitionAieqSession(textSession, textEvent, LEGACY).session
 
     expect(textEvent.optionId).toBe('try')
     expect(text.answers[question.id].optionId).toBe(card.answers[question.id].optionId)
@@ -195,22 +199,22 @@ describe('AIEQ scoring boundaries', () => {
     expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('input'))).toHaveLength(2)
     expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('decide'))).toHaveLength(2)
     expect(AIEQ_QUESTIONS.filter((q) => q.dimensions.includes('action'))).toHaveLength(2)
-    expect(createAieqSession('version-check', NOW).instrumentVersion).toBe('ai-personality-1.1-8q')
+    expect(createAieqSession('version-check', NOW).instrumentVersion).toBe('ai-personality-2.0-8q')
   })
 
   it('reproduces the meeting ENTP example with PPT clarity formula', () => {
     // The first seven answers are the example from the 2026-09-11 meeting deck. Question 8 did not exist then;
     // the example person is a clear P, so they get the P answer and J/P stays (2+3)/(2+3) = 100.
     const optionIds = ['try', 'angle', 'story', 'retry', 'usable', 'wait', 'spontaneous', 'more']
-    let session = createAieqSession('meeting-example', NOW)
-    AIEQ_QUESTIONS.forEach((question, index) => {
+    let session = { ...createAieqSession('meeting-example', NOW), instrumentVersion: 'ai-personality-1.1-8q' }
+    LEGACY.forEach((question, index) => {
       session = transitionAieqSession(
         session,
         cardAnswer(session.id, `meeting-${index}`, question.id, optionIds[index]),
-        AIEQ_QUESTIONS,
+        LEGACY,
       ).session
     })
-    const result = scoreAssessment(session)
+    const result = scoreAssessment(session, LEGACY)
     expect(result.typeKey).toBe('out-idea-logic-flex')
     expect(result.axes.energy.strength).toBe(25)
     expect(result.axes.input.strength).toBe(100)
@@ -292,7 +296,7 @@ describe('AIEQ presentation prototypes', () => {
 
     expect(scoredButtons).toHaveLength(3)
     expect(scoredButtons[0].action?.data).toContain('session_id=demo-session')
-    expect(scoredButtons[0].action?.data).toContain('question_id=q01_ai_trend')
+    expect(scoredButtons[0].action?.data).toContain('question_id=q01_new_tool')
   })
 
   it('builds a neutral report with confidence and no visual hierarchy', () => {
@@ -314,8 +318,9 @@ describe('AIEQ presentation prototypes', () => {
     expect(serialized).toContain('非心理診斷')
     expect(serialized).not.toMatch(/MBTI|Myers/i)
     // The internal key never leaves the server; the familiar shorthand may, in a supporting role.
-    expect(serialized).not.toContain('in-idea-feel-plan')
-    expect(serialized).toContain('INFJ')
+    expect(serialized).not.toContain('out-real-feel-plan')
+    expect(serialized).toContain('ESFJ')
+    expect(serialized).toContain('蜜蜂')
   })
 
   it('only starts from explicit AIEQ phrases', () => {

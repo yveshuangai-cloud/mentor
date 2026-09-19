@@ -136,7 +136,7 @@ test('team feedback tag records a verdict with a note and remembers it after rel
 
   await page.locator('#startBtn').click()
   const questionTag = page.locator('#questionCard .team-tag')
-  await expect(questionTag).toHaveAttribute('data-spot', 'question:q01_ai_trend')
+  await expect(questionTag).toHaveAttribute('data-spot', 'question:q01_new_tool')
   await questionTag.getByRole('button', { name: '這裡規劃得很好' }).click()
   await expect(questionTag.locator('.team-tag-note')).toContainText('已記錄：這裡規劃得很好')
   // Answering still works with the tag below the choices.
