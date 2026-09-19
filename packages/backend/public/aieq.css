@@ -90,3 +90,6 @@
 .scroll-hint i{width:7px;height:7px;border-right:1.5px solid var(--green);border-bottom:1.5px solid var(--green);transform:rotate(45deg);margin-top:-4px;animation:nudge 1.9s ease-in-out infinite}
 @keyframes nudge{0%,100%{transform:rotate(45deg) translate(0,0);opacity:.55}50%{transform:rotate(45deg) translate(2px,2px);opacity:1}}
 @media(prefers-reduced-motion:reduce){.scroll-hint i{animation:none}}
+
+/* The four-letter shorthand: present because people recognise it, small because the animal leads. */
+.result-code{margin:10px 0 0;font:500 19px/1 ui-monospace,monospace;letter-spacing:.24em;color:var(--gray);position:relative;z-index:2}

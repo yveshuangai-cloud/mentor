@@ -1,4 +1,10 @@
 export interface AieqAnimal {
+  /** Four-letter shorthand shown small beside the animal. */
+  displayCode: string
+  /** Green subtitle on the share card. */
+  tagline: string
+  /** One line of 自然優勢, the card's closing block. */
+  edge: string
   /** Internal key for one of the 16 combinations, e.g. 'out-idea-logic-flex'. Never shown to players. */
   typeKey: string
   slug: string
@@ -38,6 +44,37 @@ const titles: Record<string, string> = {
   'out-real-logic-plan': '落地推進者', 'out-real-feel-plan': '協作織網者', 'out-idea-feel-plan': '轉型引導者', 'out-idea-logic-plan': '目標整合者',
 }
 
+// The card's green subtitle, and the one-line 自然優勢 the card closes with.
+const taglines: Record<string, string> = {
+  'in-real-logic-plan': '穩健築系統，讓改變可靠落地', 'in-real-feel-plan': '守住品質與人，讓新工具安心被用',
+  'in-idea-feel-plan': '看見長期影響，也照顧人的需要', 'in-idea-logic-plan': '先看全局，再替未來設計架構',
+  'in-real-logic-flex': '動手拆解問題，找到最短解法', 'in-real-feel-flex': '守住美感、感受與重要價值',
+  'in-idea-feel-flex': '替技術保留意義與人的可能', 'in-idea-logic-flex': '建立模型，探索多條可能路徑',
+  'out-real-logic-flex': '在變動中搶先行動、快速修正', 'out-real-feel-flex': '讓新工具變有趣，點燃參與動能',
+  'out-idea-feel-flex': '連結創意、人與新的機會', 'out-idea-logic-flex': '換角度，換方法，直到更好的答案',
+  'out-real-logic-plan': '整合資源，讓試驗走向規模化', 'out-real-feel-plan': '把關係變成可靠的協作網絡',
+  'out-idea-feel-plan': '用對話帶領團隊共同轉型', 'out-idea-logic-plan': '把人才、技術與目標排成隊形',
+}
+const edges: Record<string, string> = {
+  'in-real-logic-plan': '把混亂變成可靠系統', 'in-real-feel-plan': '穩定照顧團隊與品質',
+  'in-idea-feel-plan': '看見長期影響與人的需求', 'in-idea-logic-plan': '設計長期策略與架構',
+  'in-real-logic-flex': '快速拆解工具與實際問題', 'in-real-feel-flex': '敏銳察覺體驗與價值衝突',
+  'in-idea-feel-flex': '守住意義、倫理與人的可能', 'in-idea-logic-flex': '建立模型並探索多條解法',
+  'out-real-logic-flex': '在變動中快速行動與修正', 'out-real-feel-flex': '帶動參與並讓新工具容易接近',
+  'out-idea-feel-flex': '連結創意、人與新機會', 'out-idea-logic-flex': '挑戰假設並組合新解法',
+  'out-real-logic-plan': '組織資源並推動規模化落地', 'out-real-feel-plan': '建立協作網絡與採用動能',
+  'out-idea-feel-plan': '帶領他人理解並共同轉型', 'out-idea-logic-plan': '整合人才、技術與目標前進',
+}
+// A familiar four-letter shorthand for the four axes, shown small beside the animal.
+// Product decision by the association's chief planner on 2026-09-19: the letters help people
+// read the result, and they carry this product's own definitions, which the page states in words.
+const displayCodes: Record<string, string> = {
+  'in-real-logic-plan': 'ISTJ', 'in-real-feel-plan': 'ISFJ', 'in-idea-feel-plan': 'INFJ', 'in-idea-logic-plan': 'INTJ',
+  'in-real-logic-flex': 'ISTP', 'in-real-feel-flex': 'ISFP', 'in-idea-feel-flex': 'INFP', 'in-idea-logic-flex': 'INTP',
+  'out-real-logic-flex': 'ESTP', 'out-real-feel-flex': 'ESFP', 'out-idea-feel-flex': 'ENFP', 'out-idea-logic-flex': 'ENTP',
+  'out-real-logic-plan': 'ESTJ', 'out-real-feel-plan': 'ESFJ', 'out-idea-feel-plan': 'ENFJ', 'out-idea-logic-plan': 'ENTJ',
+}
+
 const shareCardFiles: Record<string, string> = {
   'in-real-logic-plan': '01-beaver.jpg', 'in-real-feel-plan': '02-penguin.jpg', 'in-idea-feel-plan': '03-elephant.jpg', 'in-idea-logic-plan': '04-owl.jpg',
   'in-real-logic-flex': '05-cat.jpg', 'in-real-feel-flex': '06-red-panda.jpg', 'in-idea-feel-flex': '07-deer.jpg', 'in-idea-logic-flex': '08-octopus.jpg',
@@ -51,6 +88,9 @@ export const AIEQ_ANIMALS: Record<string, AieqAnimal> = Object.fromEntries(
     slug,
     name,
     title: titles[typeKey],
+    displayCode: displayCodes[typeKey],
+    tagline: taglines[typeKey],
+    edge: edges[typeKey],
     imagePath: `/aieq/assets/animals/swiss-modernist/${slug}.jpg`,
     resultScenePath: `/aieq/scenes/results/${slug}-v1.jpg`,
     shareCardPath: `/aieq/design/ai-personality-share-cards-16/${shareCardFiles[typeKey]}`,
@@ -63,6 +103,9 @@ export const AIEQ_ANIMALS: Record<string, AieqAnimal> = Object.fromEntries(
 export function animalForCode(typeKey: string): AieqAnimal {
   return AIEQ_ANIMALS[typeKey] ?? {
     typeKey,
+    displayCode: '',
+    tagline: '再多答幾題，就能看出你的傾向',
+    edge: '證據還在蒐集中',
     slug: 'explorer',
     name: '探索者',
     title: '證據蒐集中',

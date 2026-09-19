@@ -41,6 +41,23 @@ describe('AI Personality scoring contract', () => {
   })
 })
 
+describe('AI Personality share card content', () => {
+  // 2026-09-19 product decision: the four-letter shorthand stays because people read results by it,
+  // the trademark never appears, and the animal and its trait lead the card.
+  it('gives all 16 types a shorthand, a subtitle and a 自然優勢 line, with no trademark anywhere', () => {
+    for (const animal of Object.values(AIEQ_ANIMALS)) {
+      expect(animal.displayCode, animal.name).toMatch(/^[EI][SN][TF][JP]$/)
+      expect([...animal.tagline].length, `${animal.name} 副標`).toBeGreaterThanOrEqual(8)
+      expect([...animal.edge].length, `${animal.name} 自然優勢`).toBeGreaterThanOrEqual(8)
+      for (const field of [animal.name, animal.title, animal.tagline, animal.edge]) {
+        expect(field, animal.name).not.toMatch(/MBTI|Myers/i)
+      }
+    }
+    const codes = Object.values(AIEQ_ANIMALS).map((animal) => animal.displayCode)
+    expect(new Set(codes).size).toBe(16)
+  })
+})
+
 describe('AI Personality artwork', () => {
   it('serves every scene, share card and animal as an existing JPEG', () => {
     const root = resolve(import.meta.dirname, '../../..')

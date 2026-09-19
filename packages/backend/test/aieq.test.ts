@@ -312,7 +312,9 @@ describe('AIEQ presentation prototypes', () => {
     expect(serialized).toContain('https://example.test/aieq')
     expect(serialized).toContain('非心理診斷')
     expect(serialized).not.toMatch(/MBTI|Myers/i)
+    // The internal key never leaves the server; the familiar shorthand may, in a supporting role.
     expect(serialized).not.toContain('in-idea-feel-plan')
+    expect(serialized).toContain('INFJ')
   })
 
   it('only starts from explicit AIEQ phrases', () => {

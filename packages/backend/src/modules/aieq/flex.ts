@@ -92,6 +92,7 @@ export function buildResultFlex(
       contents: [
         { type: 'text', text: animal.name, size: 'xxl', weight: 'bold', color: '#505158' },
         { type: 'text', text: animal.title, size: 'lg', weight: 'bold', color: '#D95F82' },
+        { type: 'text', text: animal.displayCode, size: 'sm', color: '#9B9B9B' },
         { type: 'text', text: animal.strength, wrap: true, color: '#505158' },
         { type: 'text', text: `結果信心程度 ${Math.round(result.overallConfidence * 100)}%`, size: 'sm', color: '#777780' },
         { type: 'button', style: 'primary', color: '#D95F82', action: { type: 'uri', label: '確認結果與看朋友圈', uri: resultPageUrl } },
