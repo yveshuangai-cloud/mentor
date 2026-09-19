@@ -25,10 +25,13 @@ const outDir = join(repoDir, 'output/design/ai-personality-share-cards-16')
 
 const W = 941
 const H = 1672
+// The type block ends here; the animal has to start below it by this much.
+const TYPE_BOTTOM = 455
+const CLEARANCE = 22
 // The portrait circle the overlays fill: centre (773,192), radius 146.
 const AVATAR = { cx: 773, cy: 192, r: 146 }
 
-function page(animal: (typeof AIEQ_ANIMALS)[string], sceneDataUri: string, logoDataUri: string): string {
+function page(animal: (typeof AIEQ_ANIMALS)[string], sceneDataUri: string, logoDataUri: string, sceneShift: number): string {
   const esc = (t: string) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string))
   return `<!doctype html><html><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -36,7 +39,7 @@ function page(animal: (typeof AIEQ_ANIMALS)[string], sceneDataUri: string, logoD
   *{margin:0;box-sizing:border-box}
   body{width:${W}px;height:${H}px;position:relative;overflow:hidden;background:#050505;
        font-family:"Noto Sans TC","PingFang TC",sans-serif;color:#f5f4f0;-webkit-font-smoothing:antialiased}
-  .scene{position:absolute;inset:0;width:${W}px;height:${H}px;object-fit:cover}
+  .scene{position:absolute;left:0;top:${sceneShift}px;width:${W}px;height:${H}px;object-fit:cover}
   /* Scrims keep the type readable whatever the animal does behind it. */
   .top-scrim{position:absolute;left:0;right:0;top:0;height:620px;
              background:linear-gradient(180deg,#050505 0%,rgba(5,5,5,.95) 54%,rgba(5,5,5,0) 100%)}
@@ -45,15 +48,16 @@ function page(animal: (typeof AIEQ_ANIMALS)[string], sceneDataUri: string, logoD
   .ring{position:absolute;left:${AVATAR.cx - AVATAR.r}px;top:${AVATAR.cy - AVATAR.r}px;
         width:${AVATAR.r * 2}px;height:${AVATAR.r * 2}px;border-radius:50%;
         border:3px solid rgba(245,244,240,.16);background:rgba(245,244,240,.03)}
-  .head{position:absolute;left:52px;top:300px;right:${W - 600}px}
+  .head{position:absolute;left:52px;top:268px;right:${W - 620}px}
   .name{font-size:76px;font-weight:900;line-height:1.06;letter-spacing:-.02em;white-space:nowrap}
+  .name i{font-size:52px}
   .name i{font-style:normal;color:#ff1785}
   .name b{font-weight:900;color:#f5f4f0}
-  .name u{display:inline-block;width:3px;height:56px;background:rgba(245,244,240,.42);
-          margin:0 26px;vertical-align:-6px;text-decoration:none}
-  .code{margin-top:16px;font-family:"IBM Plex Mono",monospace;font-weight:400;font-size:40px;
+  .name u{display:inline-block;width:3px;height:48px;background:rgba(245,244,240,.42);
+          margin:0 22px;vertical-align:-4px;text-decoration:none}
+  .code{margin-top:12px;font-family:"IBM Plex Mono",monospace;font-weight:400;font-size:34px;
         letter-spacing:.2em;color:#8f8f97}
-  .tagline{margin-top:16px;font-size:34px;font-weight:700;line-height:1.45;color:#41ff78;letter-spacing:.01em}
+  .tagline{margin-top:12px;font-size:30px;font-weight:700;line-height:1.4;color:#41ff78;letter-spacing:.01em}
   /* Stops short of the event mark: 941 - 318 = 623, and the mark starts at 647. */
   .edge{position:absolute;left:52px;bottom:96px;right:318px;border-left:7px solid #ff1785;padding-left:26px}
   .edge small{display:block;font-size:26px;font-weight:700;letter-spacing:.22em;color:#cfcfcf;margin-bottom:14px}
@@ -92,7 +96,30 @@ for (const animal of Object.values(AIEQ_ANIMALS)) {
   if (only && animal.slug !== only) continue
   const scenePath = join(repoDir, animal.resultScenePath.replace('/aieq/scenes/', 'assets/ai-personality/scenes/'))
   const scene = `data:image/jpeg;base64,${(await readFile(scenePath)).toString('base64')}`
-  await tab.setContent(page(animal, scene, logo), { waitUntil: 'load' })
+
+  // Where the animal itself starts. A long run of strong pixels tells it apart from the faint city grid.
+  await tab.setContent('<canvas id="probe"></canvas>')
+  const animalTop = await tab.evaluate(async (data) => {
+    const img = new Image(); img.src = data; await img.decode()
+    const c = document.getElementById('probe') as HTMLCanvasElement
+    c.width = img.width; c.height = img.height
+    const ctx = c.getContext('2d')!; ctx.drawImage(img, 0, 0)
+    const d = ctx.getImageData(0, 0, img.width, img.height).data
+    for (let y = 0; y < img.height; y++) {
+      let run = 0
+      for (let x = 0; x < img.width; x++) {
+        const i = (y * img.width + x) * 4
+        const strong = d[i] + d[i + 1] + d[i + 2] > 210 || (d[i] > 110 && d[i] - d[i + 2] > 45)
+        run = strong ? run + 1 : 0
+        if (run >= 55) return y
+      }
+    }
+    return img.height
+  }, scene)
+
+  // Slide the scene down until the animal clears the type. The exposed strip at the top is black either way.
+  const shift = Math.max(0, Math.min(200, Math.round(TYPE_BOTTOM + CLEARANCE - animalTop)))
+  await tab.setContent(page(animal, scene, logo, shift), { waitUntil: 'load' })
   await tab.evaluate(() => document.fonts.ready)
   await tab.waitForTimeout(220)
   const file = animal.shareCardPath.split('/').pop() as string
@@ -108,10 +135,14 @@ for (const animal of Object.values(AIEQ_ANIMALS)) {
     return { gap: Math.round(m.left - widest), lines: lines.length }
   })
   if (clearance.gap < 16) throw new Error(`${file}: 「${animal.edge}」 comes within ${clearance.gap}px of the event mark`)
+  const typeBottom = await tab.evaluate(() => Math.round(document.querySelector('.head')!.getBoundingClientRect().bottom))
+  if (animalTop + shift < typeBottom) {
+    throw new Error(`${file}: the animal starts at ${animalTop + shift} but the type runs to ${typeBottom}`)
+  }
   const name = scale === 1 ? file : file.replace('.jpg', `@${scale}x.jpg`)
   await writeFile(join(targetDir, name), await tab.screenshot({ type: 'jpeg', quality: 92 }))
   n += 1
-  console.log(`  ${name.padEnd(20)} ${W * scale}x${H * scale}  ${animal.edge.padEnd(14)} 距標誌 ${clearance.gap}px`)
+  console.log(`  ${name.padEnd(20)} 文字底 ${typeBottom}・動物 ${animalTop}→${animalTop + shift}（下移 ${shift}）・距標誌 ${clearance.gap}px`)
 }
 await browser.close()
 console.log(`\n${n} 張分享卡已重出（941x1672，頭像圈留空）`)
