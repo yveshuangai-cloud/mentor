@@ -37,6 +37,23 @@ describe('LIFF pure helpers (aieq-core.js)', () => {
     expect(at(100, 2, '<b>')).toBe('很明顯偏 &lt;b&gt;')
   })
 
+  it('gives every tendency a plain-language line instead of a bare label', async () => {
+    const { scoreAssessment, createAieqSession, transitionAieqSession, AIEQ_QUESTIONS } =
+      await import('../src/modules/aieq/index.js')
+    let session = createAieqSession('blurb')
+    AIEQ_QUESTIONS.forEach((question, index) => {
+      session = transitionAieqSession(session, {
+        eventId: `blurb-${index}`, sessionId: session.id, source: 'card', kind: 'answer',
+        questionId: question.id, optionId: question.options[0].id,
+        occurredAt: new Date(1_700_000_000_000 + index).toISOString(), interpretationConfidence: 1,
+      }, AIEQ_QUESTIONS).session
+    })
+    for (const axis of Object.values(scoreAssessment(session, AIEQ_QUESTIONS).axes)) {
+      expect([...axis.poleBlurb].length, `${axis.dimension} blurb`).toBeGreaterThanOrEqual(12)
+      expect(axis.poleBlurb, `${axis.dimension} blurb`).not.toMatch(/[EISNTFJP] ?\/|MBTI/)
+    }
+  })
+
   it('draws the radar collapsed at the centre with targets that stay inside the chart', () => {
     const axes = [{ strength: 100, axisName: '能量來源' }, { strength: 50, axisName: '接收資訊' }, { strength: 0, axisName: '做決定' }, { strength: 20, axisName: '行動方式' }]
     const svg = core.radarChart(axes) as string

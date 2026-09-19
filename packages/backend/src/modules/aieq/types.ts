@@ -91,6 +91,8 @@ export interface AxisResult extends DimensionScore {
   pole: string
   /** Plain-language name of the leaning pole, e.g. 向外. */
   poleName: string
+  /** One line saying what that leaning looks like in daily life. */
+  poleBlurb: string
   strength: number
 }
 

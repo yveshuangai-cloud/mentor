@@ -14,11 +14,28 @@ import {
 } from './types.js'
 
 // Each axis runs between two poles described in plain Chinese. A negative balance leans left, a positive one right.
-const AXIS_POLES: Record<AxisId, { name: string; left: { key: string; name: string }; right: { key: string; name: string } }> = {
-  energy: { name: '能量來源', left: { key: 'out', name: '向外' }, right: { key: 'in', name: '向內' } },
-  input: { name: '接收資訊', left: { key: 'real', name: '務實' }, right: { key: 'idea', name: '想像' } },
-  decide: { name: '做決定', left: { key: 'logic', name: '邏輯' }, right: { key: 'feel', name: '感受' } },
-  action: { name: '行動方式', left: { key: 'plan', name: '規劃' }, right: { key: 'flex', name: '彈性' } },
+type Pole = { key: string; name: string; blurb: string }
+const AXIS_POLES: Record<AxisId, { name: string; left: Pole; right: Pole }> = {
+  energy: {
+    name: '能量來源',
+    left: { key: 'out', name: '向外', blurb: '跟人討論就會充電，想法愈講愈清楚' },
+    right: { key: 'in', name: '向內', blurb: '獨處時最能回電，想法在心裡整理好才說出口' },
+  },
+  input: {
+    name: '接收資訊',
+    left: { key: 'real', name: '務實', blurb: '先看得到的事實與細節，一步一步確認' },
+    right: { key: 'idea', name: '想像', blurb: '擅長跳躍聯想，先抓住整體的可能性' },
+  },
+  decide: {
+    name: '做決定',
+    left: { key: 'logic', name: '邏輯', blurb: '用證據和條件衡量，重視客觀與效率' },
+    right: { key: 'feel', name: '感受', blurb: '先想到人的感受，在乎關係與價值' },
+  },
+  action: {
+    name: '行動方式',
+    left: { key: 'plan', name: '規劃', blurb: '凡事提前安排，照著進度把事情收尾' },
+    right: { key: 'flex', name: '彈性', blurb: '保留變動空間，邊做邊調整找出路' },
+  },
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -106,6 +123,7 @@ function axisResult(
     confidence: clarity,
     pole: decided ? leaning.key : 'unknown',
     poleName: decided ? leaning.name : '還看不出來',
+    poleBlurb: decided ? leaning.blurb : '這次的作答還不足以判斷這一條',
     strength: round(clarity * 100),
   }
 }
