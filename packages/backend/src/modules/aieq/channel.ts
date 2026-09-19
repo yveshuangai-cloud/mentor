@@ -77,7 +77,7 @@ export async function handleAieqText(input: {
     if (active) return nextMessages(active)
     return [{
       type: 'text',
-      text: 'AI 人格誌會用 8 個 AI 情境，在約兩分鐘內整理你的四種選擇傾向與六項可發展能力，最後給你一隻代表動物。它描述目前傾向，不是心理診斷，也不評量能力高低。想開始時，跟我說「開始 AI 人格誌」。',
+      text: '你和 AI 互動時，習慣主導還是配合？「AI 人格誌」用 8 個情境、約 1 分鐘，捕捉你使用 AI 的互動直覺，解鎖專屬的「AI 人格動物」。想開始時，跟我說「開始 AI 人格誌」。結果描述目前傾向，不是心理診斷，也不評量能力高低。',
     }]
   }
   const session = await findActiveSession(input.userId)

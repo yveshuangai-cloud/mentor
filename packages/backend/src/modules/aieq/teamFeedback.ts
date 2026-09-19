@@ -114,7 +114,7 @@ export async function summarizeTeamFeedback(limit = 200): Promise<TeamFeedbackSu
 export function teamFeedbackSpotLabel(spot: string): string {
   const fixed: Record<string, string> = {
     intro: '封面／開始頁', 'result:story': '結果解讀', 'result:radar': '雷達圖', 'result:cover': '人格封面',
-    'result:share': '分享預覽', friends: '朋友圈頁',
+    'result:share': '封面與分享', friends: '分享給好友頁',
   }
   if (fixed[spot]) return fixed[spot]
   const question = /^question:q(\d+)_/.exec(spot)

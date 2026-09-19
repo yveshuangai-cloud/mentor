@@ -109,7 +109,10 @@ async function bootstrap(): Promise<void> {
   const assetHash = createHash('sha1')
   for (const asset of Object.values(liffAssets)) assetHash.update(await readFile(join(publicDir, asset.file)))
   const assetVersion = assetHash.digest('hex').slice(0, 10)
-  const liffHtml = (await readFile(join(publicDir, 'aieq.html'), 'utf8')).replaceAll('__ASSET_V__', assetVersion)
+  // og:image has to be absolute for LINE's link preview crawler, so it is filled in from the public base url.
+  const liffHtml = (await readFile(join(publicDir, 'aieq.html'), 'utf8'))
+    .replaceAll('__ASSET_V__', assetVersion)
+    .replaceAll('__BASE__', config.publicBaseUrl.replace(/\/$/, ''))
 
   app.get('/aieq', async (_req, reply) => {
     return reply

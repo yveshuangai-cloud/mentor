@@ -122,7 +122,7 @@ describe('團隊回報小標籤 helpers (aieq-core.js)', () => {
     expect(label('question:q03_ai_image')).toBe('第 3 題')
     expect(label('question:q08_ai_options')).toBe('第 8 題')
     expect(label('result:radar')).toBe('雷達圖')
-    expect(label('friends')).toBe('朋友圈頁')
+    expect(label('friends')).toBe('分享給好友頁')
     expect(label('something:new')).toBe('something:new')
   })
 

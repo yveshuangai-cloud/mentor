@@ -56,22 +56,37 @@ test('back works and a rapid triple tap sends one answer', async ({ page }) => {
   await expect(page.locator('.counter')).toContainText('02')
 })
 
-test('a finished but unconfirmed result survives a reload, then confirm keeps it private', async ({ page }) => {
+test('a finished result survives a reload and saves itself privately, with no extra tap', async ({ page }) => {
   await freshPlayer(page)
   await page.locator('#startBtn').click()
   await answerAll(page)
   const shown = await page.locator('.result-title').innerText()
+  await expect(page.locator('.saved-chip')).toContainText('只有你看得到')
   await page.reload()
   await expect(page.locator('.result-title')).toHaveText(shown)
-  await page.locator('#confirmBtn').click()
-  await expect(page.locator('#resultCard .panel')).toContainText('結果已確認')
   // The app keeps its state in module scope, so read the stored profile back through the API with the same demo identity.
   const visibility = await page.evaluate(async () => {
     const token = 'local-demo:' + localStorage.getItem('aieq-demo-device')
     const res = await fetch('/api/aieq/me', { headers: { Authorization: 'Bearer ' + token } })
     return ((await res.json()) as { profile?: { visibility?: string } }).profile?.visibility
   })
+  // Seeing your own result stores it; showing it to anyone else is still a separate opt-in.
   expect(visibility).toBe('private')
+})
+
+test('the result is one page: story, cover and share all live on the same scroll', async ({ page }) => {
+  await freshPlayer(page)
+  await page.locator('#startBtn').click()
+  await answerAll(page)
+  await expect(page.locator('[data-pane]')).toHaveCount(0)
+  await expect(page.locator('#confirmBtn')).toHaveCount(0)
+  await expect(page.locator('.result-title')).toBeVisible()
+  await expect(page.locator('#coverSection')).toBeAttached()
+  await page.locator('#toCover').click()
+  await expect(page.locator('#coverSection')).toBeInViewport({ timeout: 4000 })
+  // The share button lives at the end of that same scroll, no tab to find.
+  await page.locator('#resultShareBtn').scrollIntoViewIfNeeded()
+  await expect(page.locator('#resultShareBtn')).toBeInViewport()
 })
 
 test('the radar grows only once it is scrolled to the middle of the screen', async ({ page }) => {
@@ -86,16 +101,14 @@ test('the radar grows only once it is scrolled to the middle of the screen', asy
   await expect(shape).toHaveAttribute('points', target!)
 })
 
-test('friends page guides an unconfirmed player to the confirm button', async ({ page }) => {
+test('the share page is ready to invite straight away, with no confirmation detour', async ({ page }) => {
   await freshPlayer(page)
   await page.locator('#startBtn').click()
   await answerAll(page)
   await page.locator('nav [data-view=friends]').click()
-  await expect(page.locator('#shareBtn')).toHaveText('先去確認結果，再邀請朋友')
-  await page.locator('#shareBtn').click()
-  await expect(page.locator('#resultView')).toBeVisible()
-  await expect(page.locator('.panel.needs-confirm')).toBeVisible()
-  await expect(page.locator('#confirmBtn')).toBeFocused()
+  await expect(page.locator('nav [data-view=friends]')).toHaveText('分享給好友')
+  await expect(page.locator('#shareBtn')).toHaveText('邀請一位朋友')
+  await expect(page.locator('#friendsHint')).not.toContainText('還沒確認')
 })
 
 test('friends of friends appear only after opting in, then replay clears everything', async ({ page }) => {
