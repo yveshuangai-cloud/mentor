@@ -14,11 +14,13 @@ import {
   findOrCreateSession,
   getConfirmedProfileSession,
   getFunnelStats,
+  getPlayCount,
   getProfile,
   getSession,
   listFriends,
   listFriendsOfFriends,
   setProfileVisibility,
+  AIEQ_MAX_PLAYS,
 } from '../modules/aieq/repository.js'
 import { buildShareInviteFlex } from '../modules/aieq/flex.js'
 import { listMyTeamFeedback, recordTeamFeedback, summarizeTeamFeedback, TEAM_FEEDBACK_SPOT, TEAM_FEEDBACK_VERDICTS } from '../modules/aieq/teamFeedback.js'
@@ -59,7 +61,7 @@ function limited(reply: FastifyReply, key: string, limit: number, windowMs: numb
   return true
 }
 
-function present(session: Awaited<ReturnType<typeof findOrCreateSession>>) {
+async function present(userId: number, session: Awaited<ReturnType<typeof findOrCreateSession>>) {
   const questions = questionsFor(session.instrumentVersion)
   const question = questions[session.currentQuestionIndex] ?? null
   const result = session.status === 'completed' ? scoreAssessment(session, questions) : null
@@ -72,6 +74,7 @@ function present(session: Awaited<ReturnType<typeof findOrCreateSession>>) {
       personalizationConsent: session.personalizationConsent,
     },
     question,
+    play: { count: await getPlayCount(userId), max: AIEQ_MAX_PLAYS },
     result: result ? { ...result, report: buildResultReport(result), animal: animalForCode(result.typeKey) } : null,
   }
 }
@@ -89,7 +92,7 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
       const who = await identity(req)
       const profile = await getProfile(who.userId)
       const confirmed = profile ? await getConfirmedProfileSession(who.userId) : null
-      if (confirmed) return { mode: 'result', profile, ...present(confirmed) }
+      if (confirmed) return { mode: 'result', profile, ...(await present(who.userId, confirmed)) }
 
       let active = await findCurrentSession(who.userId)
       if (active?.status === 'paused') {
@@ -101,8 +104,9 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
           occurredAt: new Date().toISOString(),
         })).session
       }
-      if (active) return { mode: 'assessment', profile: null, ...present(active) }
-      return { mode: 'intro', profile: null, session: null, question: null, result: null }
+      if (active) return { mode: 'assessment', profile: null, ...(await present(who.userId, active)) }
+      return { mode: 'intro', profile: null, session: null, question: null, result: null,
+        play: { count: await getPlayCount(who.userId), max: AIEQ_MAX_PLAYS } }
     } catch (error) {
       return reply.code(401).send({ error: (error as Error).message })
     }
@@ -113,7 +117,7 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
       const who = await identity(req)
       if (limited(reply, `sessions:${who.userId}`, 20, 60_000)) return
       const confirmed = await getConfirmedProfileSession(who.userId)
-      if (confirmed) return { mode: 'result', profile: await getProfile(who.userId), ...present(confirmed) }
+      if (confirmed) return { mode: 'result', profile: await getProfile(who.userId), ...(await present(who.userId, confirmed)) }
       let session = await findOrCreateSession(who.userId)
       if (session.status === 'paused') {
         session = (await appendEvent(who.userId, {
@@ -124,9 +128,10 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
           occurredAt: new Date().toISOString(),
         })).session
       }
-      return { mode: 'assessment', profile: null, ...present(session) }
+      return { mode: 'assessment', profile: null, ...(await present(who.userId, session)) }
     } catch (error) {
-      return reply.code(401).send({ error: (error as Error).message })
+      const message = (error as Error).message
+      return reply.code(message === 'play_limit_reached' ? 409 : 401).send({ error: message })
     }
   })
 
@@ -134,7 +139,7 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
     try {
       const who = await identity(req)
       const session = await getSession(who.userId, (req.params as { id: string }).id)
-      return session ? present(session) : reply.code(404).send({ error: 'session_not_found' })
+      return session ? present(who.userId, session) : reply.code(404).send({ error: 'session_not_found' })
     } catch (error) {
       return reply.code(401).send({ error: (error as Error).message })
     }
@@ -150,8 +155,8 @@ export async function aieqRoutes(app: FastifyInstance): Promise<void> {
         sessionId: (req.params as { id: string }).id,
         occurredAt: parsed.occurredAt ?? new Date().toISOString(),
       })
-      if (!transition.accepted) return reply.code(409).send({ error: transition.reason, ...present(transition.session) })
-      return { duplicate: transition.duplicate, ...present(transition.session) }
+      if (!transition.accepted) return reply.code(409).send({ error: transition.reason, ...(await present(who.userId, transition.session)) })
+      return { duplicate: transition.duplicate, ...(await present(who.userId, transition.session)) }
     } catch (error) {
       const message = error instanceof z.ZodError ? 'invalid_event' : (error as Error).message
       return reply.code(message.includes('token') ? 401 : 400).send({ error: message })

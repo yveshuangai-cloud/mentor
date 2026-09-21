@@ -71,7 +71,7 @@
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
 
 /* 團隊回報小標籤 — test environments only; muted so it never competes with the game UI */
-.team-tag{margin:18px 0 0;padding:12px 14px;border:1px dashed #4a4a4a;border-radius:6px;background:rgba(65,255,120,.035)}
+.team-tag{display:none!important;margin:18px 0 0;padding:12px 14px;border:1px dashed #4a4a4a;border-radius:6px;background:rgba(65,255,120,.035)}
 .team-tag-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:9px}
 .team-tag-label{font:800 10px ui-monospace,monospace;letter-spacing:.14em;color:var(--green)}
 .team-tag-spot{font-size:11px;color:var(--gray)}
@@ -82,6 +82,24 @@
 .team-tag-form textarea{width:100%;min-height:68px;resize:vertical;background:#101010;color:var(--white);border:1px solid #444;border-radius:4px;padding:9px;font:inherit;font-size:13px;line-height:1.5}
 .team-tag-send{background:var(--green);color:#052;border:0;border-radius:4px;padding:9px 12px;font-size:13px;font-weight:800;min-height:0}
 .team-tag-note{margin:8px 0 0;font-size:11px;line-height:1.55;color:var(--gray)}
+
+/* Dedicated, closed-choice product review. Only a ?review=yves URL creates this panel. */
+.yves-review{margin:42px 0 12px;padding:24px 18px;border:1px solid var(--green);background:rgba(65,255,120,.035)}
+.yves-review h2{margin:8px 0 10px;font-size:27px;line-height:1.25}
+.review-intro{margin:0 0 24px;color:#bbb;font-size:15px;line-height:1.65}
+.review-decisions{display:grid;gap:18px}
+.review-decision{position:relative;padding:20px 0 0;border-top:1px solid var(--line)}
+.review-number{position:absolute;right:0;top:14px;color:var(--pink);font:900 22px ui-monospace,monospace}
+.review-decision h3{margin:0 42px 6px 0;font-size:20px;line-height:1.35}
+.review-decision>p{margin:0 0 12px;color:#aaa;font-size:14px;line-height:1.55}
+.review-decision button{display:flex;align-items:center;gap:10px;width:100%;min-height:60px;margin:8px 0;padding:13px 14px;text-align:left;color:var(--white);background:#0a0a0a;border:1px solid #555}
+.review-decision button b{flex:none;padding:3px 6px;color:#052;background:var(--green);font-size:12px}
+.review-decision button span{font-size:17px;font-weight:800;line-height:1.35}
+.review-decision button.selected{border:2px solid var(--green);background:rgba(65,255,120,.11)}
+.review-decision button.alternative.selected{border-color:var(--pink);background:rgba(255,23,133,.1)}
+.review-summary{position:sticky;bottom:78px;z-index:8;margin:24px -8px 0;padding:13px 14px;border:1px solid #666;background:rgba(5,5,5,.96);color:#bbb;font-size:15px;font-weight:800;text-align:center}
+.review-summary.complete{border-color:var(--green);color:var(--green)}
+.review-error{color:var(--pink)!important}
 
 /* One-page result: the story, then a nudge, then the cover the player will share. */
 .saved-chip{margin:0 0 4px;padding:9px 12px;border-left:2px solid var(--green);background:rgba(65,255,120,.06);color:var(--gray);font-size:12px;line-height:1.6}

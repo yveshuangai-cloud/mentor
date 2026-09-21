@@ -7,6 +7,15 @@ import { scoreAssessment } from './scoring.js'
 import { createAieqSession, transitionAieqSession } from './stateMachine.js'
 import type { AieqSession, AnswerEvent, RecordedAnswer } from './types.js'
 
+export const AIEQ_MAX_PLAYS = 3
+
+export async function getPlayCount(userId: number): Promise<number> {
+  const result = await platformQuery<{ play_count: number }>(
+    `SELECT play_count FROM aieq_play_limits WHERE user_id=$1`, [userId],
+  )
+  return Number(result.rows[0]?.play_count ?? 0)
+}
+
 interface SessionRow {
   id: string
   instrument_version: string
@@ -100,6 +109,15 @@ export async function findOrCreateSession(userId: number, tenantId?: number): Pr
       [userId],
     )
     if (existing.rows[0]) return (await loadWith(client, existing.rows[0].id, userId))!
+
+    await client.query(
+      `INSERT INTO aieq_play_limits (user_id,play_count) VALUES ($1,0) ON CONFLICT (user_id) DO NOTHING`,
+      [userId],
+    )
+    const counter = await client.query<{ play_count: number }>(
+      `SELECT play_count FROM aieq_play_limits WHERE user_id=$1 FOR UPDATE`, [userId],
+    )
+    if (Number(counter.rows[0]?.play_count ?? 0) >= AIEQ_MAX_PLAYS) throw new Error('play_limit_reached')
     const session = createAieqSession(randomUUID())
     const inserted = await client.query(
       `INSERT INTO aieq_sessions
@@ -115,6 +133,9 @@ export async function findOrCreateSession(userId: number, tenantId?: number): Pr
       if (!winner.rows[0]) throw new Error('session_create_conflict')
       return (await loadWith(client, winner.rows[0].id, userId))!
     }
+    await client.query(
+      `UPDATE aieq_play_limits SET play_count=play_count+1,updated_at=now() WHERE user_id=$1`, [userId],
+    )
     return session
   })
 }

@@ -123,6 +123,22 @@ test('friends of friends appear only after opting in, then replay clears everyth
   await expect(page.locator('#startBtn')).toBeVisible()
 })
 
+test('one player can start at most three plays', async ({ page }) => {
+  await freshPlayer(page)
+  for (let play = 1; play <= 3; play++) {
+    await page.locator('#startBtn').click()
+    await answerAll(page, play % 3)
+    await expect(page.locator('#replayBtn')).toContainText(`${play}/3`)
+    if (play < 3) {
+      await expect(page.locator('#replayBtn')).toBeEnabled()
+      await page.locator('#replayBtn').click()
+      await expect(page.locator('#startBtn')).toBeVisible()
+    }
+  }
+  await expect(page.locator('#replayBtn')).toHaveText('已達上限 3/3')
+  await expect(page.locator('#replayBtn')).toBeDisabled()
+})
+
 test('team feedback tag records a verdict with a note and remembers it after reload', async ({ page }) => {
   await freshPlayer(page)
   const tag = page.locator('#introTag .team-tag')

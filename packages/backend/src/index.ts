@@ -105,6 +105,7 @@ async function bootstrap(): Promise<void> {
     '/aieq.css': { file: 'aieq.css', type: 'text/css; charset=utf-8' },
     '/aieq-core.js': { file: 'aieq-core.js', type: 'application/javascript; charset=utf-8' },
     '/aieq.js': { file: 'aieq.js', type: 'application/javascript; charset=utf-8' },
+    '/aieq-review.js': { file: 'aieq-review.js', type: 'application/javascript; charset=utf-8' },
   }
   const assetHash = createHash('sha1')
   for (const asset of Object.values(liffAssets)) assetHash.update(await readFile(join(publicDir, asset.file)))
