@@ -111,3 +111,30 @@
 
 /* The four-letter shorthand: present because people recognise it, small because the animal leads. */
 .result-code{margin:10px 0 0;font:500 19px/1 ui-monospace,monospace;letter-spacing:.24em;color:var(--gray);position:relative;z-index:2}
+
+/* Result comprehension layer: answer first, then evidence; never changes scoring. */
+.result-explain{margin:4px 0 36px;padding:22px 20px;border-left:4px solid var(--green);background:rgba(65,255,120,.07)}
+.result-explain small{display:block;color:var(--green);font-weight:900;font-size:14px;letter-spacing:.04em}
+.result-explain p{margin:9px 0 0;font-size:22px;font-weight:800;line-height:1.55;letter-spacing:-.02em}
+.result-block{margin:36px 0}
+.result-block h2{margin:7px 0 18px;font-size:27px;line-height:1.3}
+.signal-grid{display:grid;gap:12px}
+.signal-card{padding:18px;border:1px solid #555;background:rgba(255,255,255,.025)}
+.signal-card small{color:var(--pink);font-size:13px;font-weight:900}
+.signal-card h3{margin:5px 0 7px;color:var(--green);font-size:25px}
+.signal-card b{display:block;font-size:15px}
+.signal-card p{margin:8px 0 0;color:#c4c4c4;font-size:17px;line-height:1.65}
+.action-story{margin:10px -10px 0;padding-left:10px;padding-right:10px;border:1px solid var(--green);background:rgba(65,255,120,.055)}
+.radar-key{display:grid;gap:9px;margin:4px 5px 15px}
+.radar-key p{display:grid;grid-template-columns:16px auto 1fr;gap:8px;align-items:center;margin:0;font-size:14px}
+.radar-key i{width:12px;height:12px;border-radius:50%;display:block}
+.key-centre{background:#555}.key-edge{background:var(--green);box-shadow:0 0 0 3px rgba(65,255,120,.15)}
+.radar-key b{color:var(--white)}.radar-key span{color:#aaa}
+.radar-warning{padding:12px!important;margin:14px 5px!important;border:1px solid var(--pink);color:var(--white)!important;font-weight:800}
+.radar-summary{padding:15px!important;margin:10px 5px 0!important;background:rgba(255,23,133,.09);color:var(--white)!important;font-size:17px!important;line-height:1.65!important}
+.evidence-list{display:grid;gap:12px}
+.evidence-list article{padding:18px;border-top:1px solid var(--green);background:rgba(255,255,255,.025)}
+.evidence-list p{margin:0 0 10px;font-size:18px;font-weight:800;line-height:1.5}
+.evidence-list strong{display:block;color:var(--green);font-size:17px;line-height:1.5}
+.evidence-list span{display:block;margin-top:8px;color:#bbb;font-size:15px;line-height:1.65}
+@media(max-width:600px){.result-explain p{font-size:21px}.result-block h2{font-size:25px}.radar-key p{grid-template-columns:16px 1fr}.radar-key span{grid-column:2}.evidence-block .micro{font-size:14px}}

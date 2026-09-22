@@ -2,6 +2,7 @@ export { AIEQ_QUESTIONS, INSTRUMENT_VERSION, QUESTION_BANKS, getQuestion, questi
 export { AIEQ_ANIMALS, animalForCode } from './catalog.js'
 export { buildResultFlex, buildShareInviteFlex, buildThreeChoiceFlex } from './flex.js'
 export { buildResultReport } from './report.js'
+export { buildResultExperience } from './resultExperience.js'
 export { scoreAssessment } from './scoring.js'
 export { createAieqSession, freeTextToAnswerEvent, transitionAieqSession } from './stateMachine.js'
 export { isAieqInfoText, isAieqStartText } from './channel.js'

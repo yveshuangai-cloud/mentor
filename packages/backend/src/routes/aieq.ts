@@ -23,6 +23,7 @@ import {
   AIEQ_MAX_PLAYS,
 } from '../modules/aieq/repository.js'
 import { buildShareInviteFlex } from '../modules/aieq/flex.js'
+import { buildResultExperience } from '../modules/aieq/resultExperience.js'
 import { listMyTeamFeedback, recordTeamFeedback, summarizeTeamFeedback, TEAM_FEEDBACK_SPOT, TEAM_FEEDBACK_VERDICTS } from '../modules/aieq/teamFeedback.js'
 import { allow } from '../modules/aieq/rateLimit.js'
 import { buildResultReport } from '../modules/aieq/report.js'
@@ -65,6 +66,7 @@ async function present(userId: number, session: Awaited<ReturnType<typeof findOr
   const questions = questionsFor(session.instrumentVersion)
   const question = questions[session.currentQuestionIndex] ?? null
   const result = session.status === 'completed' ? scoreAssessment(session, questions) : null
+  const animal = result ? animalForCode(result.typeKey) : null
   return {
     session: {
       id: session.id,
@@ -75,7 +77,12 @@ async function present(userId: number, session: Awaited<ReturnType<typeof findOr
     },
     question,
     play: { count: await getPlayCount(userId), max: AIEQ_MAX_PLAYS },
-    result: result ? { ...result, report: buildResultReport(result), animal: animalForCode(result.typeKey) } : null,
+    result: result && animal ? {
+      ...result,
+      report: buildResultReport(result),
+      animal,
+      experience: buildResultExperience(session, result, questions, animal),
+    } : null,
   }
 }
 
