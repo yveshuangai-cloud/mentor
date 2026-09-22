@@ -299,13 +299,15 @@ describe('AIEQ presentation prototypes', () => {
     expect(scoredButtons[0].action?.data).toContain('question_id=q01_new_tool')
   })
 
-  it('hides the weightless uncertain action on question 8 in LINE Flex', () => {
-    const question = AIEQ_QUESTIONS.find((item) => item.id === 'q08_vague_request')!
-    const flex = buildThreeChoiceFlex('demo-session', question)
-    const serialized = JSON.stringify(flex)
-
-    expect(serialized).not.toContain('action=aieq_uncertain')
-    expect((serialized.match(/action=aieq_answer/g) ?? [])).toHaveLength(3)
+  it('shows only three scored choices and an instinct prompt on every LINE Flex question', () => {
+    for (const question of AIEQ_QUESTIONS) {
+      const serialized = JSON.stringify(buildThreeChoiceFlex('demo-session', question))
+      expect(serialized).not.toContain('action=aieq_uncertain')
+      expect(serialized).not.toContain('action=aieq_back')
+      expect(serialized).not.toContain('回上一題')
+      expect(serialized).toContain('請直覺回答，不用考慮太多')
+      expect((serialized.match(/action=aieq_answer/g) ?? [])).toHaveLength(3)
+    }
   })
 
   it('builds a neutral report with confidence and no visual hierarchy', () => {

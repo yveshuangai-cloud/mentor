@@ -7,7 +7,8 @@ import { scoreAssessment } from './scoring.js'
 import { createAieqSession, transitionAieqSession } from './stateMachine.js'
 import type { AieqSession, AnswerEvent, RecordedAnswer } from './types.js'
 
-export const AIEQ_MAX_PLAYS = 3
+// One original run plus one retry. The counter is lifetime-per-LINE-user and survives replay deletion.
+export const AIEQ_MAX_PLAYS = 2
 
 export async function getPlayCount(userId: number): Promise<number> {
   const result = await platformQuery<{ play_count: number }>(

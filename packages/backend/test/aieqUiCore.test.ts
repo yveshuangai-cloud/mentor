@@ -117,8 +117,10 @@ describe('LIFF page structure', () => {
     for (const name of Object.keys(core)) expect(pulled, `${name} is exported but unused`).toContain(name)
   })
 
-  it('hides the weightless uncertain button on the current question 8', () => {
-    expect(main).toContain("q.id==='q08_vague_request'?'':'<button class=\"secondary\" data-kind=\"uncertain\">不確定</button>'")
+  it('asks for instinctive answers without uncertain or back controls', () => {
+    expect(main).toContain('請直覺回答，不用考慮太多')
+    expect(main).not.toContain('data-kind="uncertain"')
+    expect(main).not.toContain('data-kind="back"')
   })
 })
 

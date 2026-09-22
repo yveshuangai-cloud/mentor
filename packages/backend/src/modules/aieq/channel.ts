@@ -85,17 +85,25 @@ export async function handleAieqText(input: {
   if (session.status === 'completed') return null
 
   let event
+  if (BACK_RE.test(input.text)) {
+    return [
+      { type: 'text', text: '這份測驗以第一次直覺為準，選定後不回上一題。請繼續回答目前這題。' },
+      questionMessage(session, session.currentQuestionIndex),
+    ]
+  }
   if (PAUSE_RE.test(input.text)) event = {
     eventId: input.eventId, sessionId: session.id, source: 'free_text' as const,
     kind: 'pause' as const, occurredAt: new Date().toISOString(), rawText: input.text,
   }
-  else if (BACK_RE.test(input.text)) event = {
-    eventId: input.eventId, sessionId: session.id, source: 'free_text' as const,
-    kind: 'back' as const, occurredAt: new Date().toISOString(), rawText: input.text,
-  }
   else {
     const question = questionsFor(session.instrumentVersion)[session.currentQuestionIndex]
     event = freeTextToAnswerEvent({ eventId: input.eventId, sessionId: session.id, question, rawText: input.text })
+    if (event.kind === 'uncertain' || event.kind === 'skip') {
+      return [
+        { type: 'text', text: '不用想太久，請憑第一直覺選最接近平常行為的一項。' },
+        questionMessage(session, session.currentQuestionIndex),
+      ]
+    }
     if (event.kind === 'answer' && !event.optionId) {
       return [
         { type: 'text', text: '我還不能確定你比較接近哪個選項。可以換個方式說，或直接點下面最接近的一項。' },
@@ -119,12 +127,17 @@ export async function handleAieqPostback(input: {
   if (!sessionId) return [{ type: 'text', text: '這張卡片已經失效，請跟我說「繼續 AIEQ」。' }]
   const session = await getSession(input.userId, sessionId)
   if (!session) return [{ type: 'text', text: '找不到這次測評，請跟我說「開始 AIEQ」。' }]
-  const kind = action === 'aieq_answer' ? 'answer' : action === 'aieq_back' ? 'back' : 'uncertain'
+  if (action !== 'aieq_answer') {
+    return [
+      { type: 'text', text: '這份測驗以第一次直覺為準，請直接選目前題目的 A、B 或 C。' },
+      ...nextMessages(session),
+    ]
+  }
   const transition = await appendEvent(input.userId, {
     eventId: input.eventId,
     sessionId,
     source: 'card',
-    kind,
+    kind: 'answer',
     questionId: params.get('question_id') ?? undefined,
     optionId: params.get('option_id') ?? undefined,
     occurredAt: new Date().toISOString(),

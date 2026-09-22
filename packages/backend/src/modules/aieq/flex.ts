@@ -39,19 +39,6 @@ export function buildThreeChoiceFlex(sessionId: string, question: AieqQuestion):
             }).toString(),
           },
         })),
-        ...(question.id === 'q08_vague_request' ? [] : [{
-          type: 'button',
-          height: 'sm',
-          action: {
-            type: 'postback',
-            label: '不確定',
-            data: new URLSearchParams({
-              action: 'aieq_uncertain',
-              session_id: sessionId,
-              question_id: question.id,
-            }).toString(),
-          },
-        }]),
       ],
     },
     footer: {
@@ -60,7 +47,7 @@ export function buildThreeChoiceFlex(sessionId: string, question: AieqQuestion):
       contents: [
         {
           type: 'text',
-          text: '選最接近平常行為的一項。要修改時輸入「回上一題」。',
+          text: '請直覺回答，不用考慮太多。選最接近平常行為的一項。',
           size: 'xs',
           color: '#777777',
           wrap: true,
