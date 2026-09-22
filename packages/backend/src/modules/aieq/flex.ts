@@ -39,7 +39,7 @@ export function buildThreeChoiceFlex(sessionId: string, question: AieqQuestion):
             }).toString(),
           },
         })),
-        {
+        ...(question.id === 'q08_vague_request' ? [] : [{
           type: 'button',
           height: 'sm',
           action: {
@@ -51,7 +51,7 @@ export function buildThreeChoiceFlex(sessionId: string, question: AieqQuestion):
               question_id: question.id,
             }).toString(),
           },
-        },
+        }]),
       ],
     },
     footer: {

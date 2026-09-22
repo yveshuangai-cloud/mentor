@@ -116,6 +116,10 @@ describe('LIFF page structure', () => {
     for (const name of pulled) expect(typeof core[name], name).toBe('function')
     for (const name of Object.keys(core)) expect(pulled, `${name} is exported but unused`).toContain(name)
   })
+
+  it('hides the weightless uncertain button on the current question 8', () => {
+    expect(main).toContain("q.id==='q08_vague_request'?'':'<button class=\"secondary\" data-kind=\"uncertain\">不確定</button>'")
+  })
 })
 
 describe('團隊回報小標籤 helpers (aieq-core.js)', () => {
@@ -142,4 +146,3 @@ describe('團隊回報小標籤 helpers (aieq-core.js)', () => {
     expect(mine).toContain('已記錄：這裡規劃有問題（&lt;b&gt;字太小&lt;/b&gt;）')
   })
 })
-
