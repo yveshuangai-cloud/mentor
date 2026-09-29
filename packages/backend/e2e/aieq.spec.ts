@@ -21,6 +21,27 @@ async function answerAll(page: Page, pick = 1) {
 const inFirstScreen = async (page: Page, selector: string) =>
   page.locator(selector).evaluate((el) => { const b = el.getBoundingClientRect(); return b.top >= 0 && b.bottom <= window.innerHeight })
 
+test('result heading separates the animal from a smaller rose-pink personality title', async ({ page }) => {
+  await freshPlayer(page)
+  await page.locator('#startBtn').click()
+  await answerAll(page)
+  const heading = page.locator('.result-title')
+  await expect(heading).not.toContainText('·')
+  const layout = await heading.evaluate((el) => {
+    const animal = el.querySelector('.result-animal-name')!
+    const title = el.querySelector('.result-personality-title')!
+    const a = animal.getBoundingClientRect(), t = title.getBoundingClientRect()
+    return { animalBottom: a.bottom, titleTop: t.top, titleWidth: t.width,
+      headingWidth: el.getBoundingClientRect().width,
+      animalSize: parseFloat(getComputedStyle(animal).fontSize),
+      titleSize: parseFloat(getComputedStyle(title).fontSize), color: getComputedStyle(title).color }
+  })
+  expect(layout.titleTop).toBeGreaterThanOrEqual(layout.animalBottom)
+  expect(layout.titleSize).toBeLessThan(layout.animalSize)
+  expect(layout.color).toBe('rgb(217, 95, 130)')
+  expect(layout.titleWidth).toBeLessThanOrEqual(layout.headingWidth)
+})
+
 test('start button is on the first screen', async ({ page }) => {
   await freshPlayer(page)
   expect(await inFirstScreen(page, '#startBtn')).toBe(true)
