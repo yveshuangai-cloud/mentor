@@ -49,9 +49,23 @@ CLI 的搜尋結果可能含私人資料，只在本機查看；不要把終端�
 ## 驗證
 
 ```sh
-python3 -m unittest discover -s knowledge-management -p 'test_*.py' -v
+python3 -m unittest discover -s knowledge-management -p 'test_mantou_km.py' -v
 ```
 
 測試全部使用虛構 fixtures 和暫存目錄，涵蓋繁中、全形／ASCII、literal特殊字元、metadata/SHA、原始來源不變、修改重建、刪除清理、部分範圍更新、UTF-8錯誤回滾、secret/private排除、符號連結、越界與DB跨專案重綁拒絕、檔案權限與公開checkout DB拒絕。
 
 未串接正式租戶系統或人格記憶；目前資料隔離是本機 DB 與指定專案，不是雲端多租戶權限系統。
+
+## 選用：本地 MCP 介面
+
+MCP橋接使用MIT授權的[官方Python SDK](https://github.com/modelcontextprotocol/python-sdk/tree/v1.x)，版本固定於requirements-mcp.txt；CLI本身仍不需要第三方套件。
+
+在獨立venv安裝requirements-mcp.txt，設定MANTOU_KB_ROOT與MANTOU_KB_DB為已索引且彼此綁定的專案與私人資料庫，再啟動mantou_mcp.py。採stdio傳輸，不開HTTP埠、不下載LLM。提供knowledge_info、knowledge_search、knowledge_get及knowledge_refresh；工具參數不可指定其他路徑。宿主需重新載入MCP設定才會取得工具。
+
+安裝SDK後可執行全部11項測試：
+
+```sh
+python -m unittest discover -s knowledge-management -p 'test_*.py' -v
+```
+
+協定測試只使用合成來源；包含真實stdio初始化與呼叫、全文狀態核對、錯誤參數、來源不被refresh改動、跨專案DB啟動拒絕。
