@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.sqlite
+*.sqlite3
+*.db
+*.sqlite3-*
+private/
+local-data/
